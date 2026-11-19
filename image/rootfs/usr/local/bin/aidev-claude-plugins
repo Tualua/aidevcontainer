@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ставит маркетплейсы и плагины Claude Code в ~/.claude (общий том aidev-claude).
+# Ставит маркетплейсы и плагины Claude Code в ~/.claude (проектный том aidev-claude-<id>).
 # Вызывается из postCreateCommand (метаданные образа); идемпотентен, ошибки не фатальны.
 #
 #   AIDEV_CLAUDE_MARKETPLACES  — источники через пробел (URL git / owner/repo / путь)
@@ -13,7 +13,7 @@ claude="$(command -v claude || echo "$HOME/.local/bin/claude")"
 [ -x "$claude" ] || { echo "aidev-claude-plugins: claude not found, skip"; exit 0; }
 
 # run DESCRIPTION CMD... — с одной повторной попыткой; полный вывод только при ошибке
-# Несколько контейнеров могут создаваться одновременно и писать в общий том ~/.claude
+# Защита от параллельного запуска в одном томе ~/.claude (например, два контейнера одного проекта)
 exec 9>"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.aidev-plugins.lock"
 flock -w 600 9 || echo "aidev-claude-plugins: WARN lock timeout, continuing"
 

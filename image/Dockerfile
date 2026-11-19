@@ -190,6 +190,12 @@ RUN case "$(dpkg --print-architecture)" in amd64) t=x86_64;; arm64) t=aarch64;; 
 COPY image/rootfs/ /
 COPY docs/agent-guide.md /usr/share/doc/aidev/agent-guide.md
 
+# Единственный общий для всех проектов том — кэши пакетов (aidev-pkgcache): Go-модули, uv, npm.
+# Всё остальное (агенты, токены, ~/.cache с go-build/gopls) — проектные тома.
+ENV GOMODCACHE=/home/${USERNAME}/.pkgcache/gomod \
+    UV_CACHE_DIR=/home/${USERNAME}/.pkgcache/uv \
+    NPM_CONFIG_CACHE=/home/${USERNAME}/.pkgcache/npm
+
 # Плагины Claude Code, которые ставит aidev-claude-plugins (postCreate); проект может переопределить
 ENV AIDEV_CLAUDE_MARKETPLACES="open-gsd/gsd-core anthropics/claude-plugins-official" \
     AIDEV_CLAUDE_PLUGINS="gsd-core@gsd-core gopls-lsp@claude-plugins-official pyright-lsp@claude-plugins-official typescript-lsp@claude-plugins-official"
@@ -201,8 +207,13 @@ RUN for f in /etc/claude-code/managed-settings.d/*.json; do jq empty "$f" || exi
     && install -d -o "${USERNAME}" -g "${USERNAME}" \
         "$h/.claude" "$h/.qwen" "$h/.config" "$h/.config/opencode" "$h/.config/gh" "$h/.config/glab-cli" \
         "$h/.local" "$h/.local/bin" "$h/.local/share" "$h/.local/share/opencode" \
-        "$h/.cache" "$h/.commandhistory" "$h/go" "$h/go/pkg" "$h/go/pkg/mod" \
+        "$h/.cache" "$h/.commandhistory" "$h/go" "$h/go/bin" \
+        "$h/.pkgcache" "$h/.pkgcache/gomod" "$h/.pkgcache/uv" "$h/.pkgcache/npm" \
     && echo '[ -f /etc/aidev/bashrc ] && . /etc/aidev/bashrc' >> "$h/.bashrc" \
+    # Пользовательские настройки Claude по умолчанию: попадают в каждый НОВЫЙ проектный том ~/.claude
+    # (Docker копирует содержимое каталога образа в пустой том). Меняются через /config.
+    && printf '%s\n' '{' '  "remoteControlAtStartup": true' '}' > "$h/.claude/settings.json" \
+    && chown "${USERNAME}:${USERNAME}" "$h/.claude/settings.json" \
     && printf '%s\n' \
         '# Общая конфигурация aidev (oh-my-zsh, плагины, история): /etc/aidev/zshrc' \
         '# Переменные ZSH_THEME / AIDEV_OMZ_PLUGINS можно задать ДО source.' \
@@ -226,16 +237,17 @@ LABEL org.opencontainers.image.title="aidev" \
         "updateRemoteUserUID": true, \
         "init": true, \
         "postCreateCommand": "/usr/local/bin/aidev-claude-plugins", \
+        "containerEnv": {"CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "${localWorkspaceFolderBasename}"}, \
         "mounts": [ \
-          {"source": "aidev-claude",          "target": "/home/dev/.claude",               "type": "volume"}, \
-          {"source": "aidev-qwen",            "target": "/home/dev/.qwen",                 "type": "volume"}, \
-          {"source": "aidev-opencode-config", "target": "/home/dev/.config/opencode",      "type": "volume"}, \
-          {"source": "aidev-opencode-data",   "target": "/home/dev/.local/share/opencode", "type": "volume"}, \
-          {"source": "aidev-gh-${devcontainerId}",   "target": "/home/dev/.config/gh",       "type": "volume"}, \
-          {"source": "aidev-glab-${devcontainerId}", "target": "/home/dev/.config/glab-cli", "type": "volume"}, \
-          {"source": "aidev-gomodcache",      "target": "/home/dev/go/pkg/mod",            "type": "volume"}, \
-          {"source": "aidev-cache",           "target": "/home/dev/.cache",                "type": "volume"}, \
-          {"source": "aidev-history-${devcontainerId}", "target": "/home/dev/.commandhistory", "type": "volume"} \
+          {"source": "aidev-claude-${devcontainerId}",          "target": "/home/dev/.claude",               "type": "volume"}, \
+          {"source": "aidev-qwen-${devcontainerId}",            "target": "/home/dev/.qwen",                 "type": "volume"}, \
+          {"source": "aidev-opencode-config-${devcontainerId}", "target": "/home/dev/.config/opencode",      "type": "volume"}, \
+          {"source": "aidev-opencode-data-${devcontainerId}",   "target": "/home/dev/.local/share/opencode", "type": "volume"}, \
+          {"source": "aidev-gh-${devcontainerId}",              "target": "/home/dev/.config/gh",            "type": "volume"}, \
+          {"source": "aidev-glab-${devcontainerId}",            "target": "/home/dev/.config/glab-cli",      "type": "volume"}, \
+          {"source": "aidev-cache-${devcontainerId}",           "target": "/home/dev/.cache",                "type": "volume"}, \
+          {"source": "aidev-history-${devcontainerId}",         "target": "/home/dev/.commandhistory",       "type": "volume"}, \
+          {"source": "aidev-pkgcache",                          "target": "/home/dev/.pkgcache",             "type": "volume"} \
         ], \
         "customizations": {"vscode": { \
           "settings": { \

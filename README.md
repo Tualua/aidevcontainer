@@ -42,32 +42,38 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
 указать `"image": "ghcr.io/tualua/aidev:latest"`, а всё остальное подтянется само:
 
 - `remoteUser`, `init`, обновление UID/GID под пользователя хоста;
-- **именованные тома**. Общие тома служат для агентов и кэшей (авторизоваться в AI-агентах нужно один раз).
-  Проектные тома хранят всё, что у проектов должно быть своим: токены git-хостингов, kubeconfig, историю:
+- **именованные тома. Проекты изолированы друг от друга**: у каждого проекта свои учётные данные и
+  состояние агентов (сессии, память, история). Агент одного проекта не видит, над чем работает другой.
+  Общий только кэш пакетов.
 
   | Том | Путь в контейнере |
   |---|---|
-  | `aidev-claude` | `~/.claude` (+ `CLAUDE_CONFIG_DIR`, `.claude.json` тоже там) |
-  | `aidev-qwen` | `~/.qwen` |
-  | `aidev-opencode-config`, `aidev-opencode-data` | `~/.config/opencode`, `~/.local/share/opencode` |
-  | `aidev-gomodcache`, `aidev-cache` | кэш Go-модулей, `~/.cache` (uv, go-build) |
   | **Проектные** (`<id>` — `devcontainerId`, хэш пути проекта, стабилен между пересборками) | |
-  | `aidev-gh-<id>`, `aidev-glab-<id>` | `~/.config/gh`, `~/.config/glab-cli`: свой токен в каждом проекте |
+  | `aidev-claude-<id>` | `~/.claude` (`CLAUDE_CONFIG_DIR`, `.claude.json` тоже там) |
+  | `aidev-qwen-<id>` | `~/.qwen` |
+  | `aidev-opencode-config-<id>`, `aidev-opencode-data-<id>` | `~/.config/opencode`, `~/.local/share/opencode` |
+  | `aidev-gh-<id>`, `aidev-glab-<id>` | `~/.config/gh`, `~/.config/glab-cli` |
   | `aidev-kube-<id>` (feature `kubernetes`) | `~/.kube`: свой kubeconfig и **текущий контекст** |
+  | `aidev-cache-<id>` | `~/.cache` (go-build, gopls, oh-my-zsh: производные от кода проекта) |
   | `aidev-history-<id>` | история zsh/bash |
+  | **Общий** | |
+  | `aidev-pkgcache` | `~/.pkgcache`: `GOMODCACHE`, `UV_CACHE_DIR`, `NPM_CONFIG_CACHE` (исходники зависимостей, **включая приватные**) |
+
+  Поэтому в каждом новом проекте нужно один раз авторизоваться: `claude` (`/login`), `gh auth login`,
+  `glab auth login`, opencode и qwen. Для gh/glab можно передать токен с хоста:
+  `"containerEnv": {"GH_TOKEN": "${localEnv:GH_TOKEN_MYPROJ}"}` (для glab: `GITLAB_TOKEN`).
+  Для Claude используйте именно `/login`: токен `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) не работает с Remote Control.
 
   Тома проекта можно найти так: `docker inspect <контейнер> --format '{{range .Mounts}}{{.Name}} {{end}}'`.
   Если удалить каталог проекта, его тома останутся. Чистка: `docker volume ls -q -f dangling=true | grep '^aidev-'`.
-
-  **Имена каталогов проектов должны быть уникальными.** Проект монтируется в `/workspaces/<имя каталога>`,
-  а Claude Code хранит историю сессий, память проекта и доверие к каталогу по этому пути. Каталоги
-  `~/a/api` и `~/b/api` будут делить всё это между собой.
-
-  Вместо `gh auth login` в каждом проекте можно передать токен с хоста:
-  `"containerEnv": {"GH_TOKEN": "${localEnv:GH_TOKEN_MYPROJ}"}` (для glab: `GITLAB_TOKEN`).
+  Если нужна изоляция и кэша пакетов (приватные зависимости), переопределите том в проекте:
+  `"mounts": [{"source": "aidev-pkgcache-${devcontainerId}", "target": "/home/dev/.pkgcache", "type": "volume"}]`.
+- **Remote Control включён по умолчанию** (`remoteControlAtStartup` в `~/.claude/settings.json` нового проекта,
+  выключается через `/config`). Сессия называется по имени каталога проекта
+  (`CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX`). Нужна подписка Pro/Max/Team/Enterprise и вход через `/login`.
 
 - **Плагины Claude Code** ставит `aidev-claude-plugins` при создании контейнера (`postCreateCommand`)
-  в общий том `~/.claude`. Он идемпотентен и при отсутствии сети не роняет создание контейнера.
+  в проектный том `~/.claude`. Он идемпотентен и при отсутствии сети не роняет создание контейнера.
   По умолчанию ставится `gsd-core@gsd-core` из маркетплейса
   [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core). Список задают переменные
   `AIDEV_CLAUDE_MARKETPLACES` и `AIDEV_CLAUDE_PLUGINS` в `containerEnv` проекта (значение
@@ -206,7 +212,7 @@ GitHub Actions (`.github/workflows/`):
 |---|---|
 | Образ (AI CLI, Go, Node, uv-инструменты, gh/glab, oh-my-zsh, пакеты Ubuntu) | CI раз в неделю собирает образ без кэша и публикует `latest` и `YYYYMMDD`. На хосте нужно сделать `docker pull` и затем **Rebuild Container** |
 | Claude Code внутри работающего контейнера | Обновляется сам (нативный установщик в `~/.local`). После пересоздания контейнера берётся версия из образа |
-| Плагины Claude Code | `aidev-claude-plugins --update` (хранятся в общем томе, обновляются для всех проектов сразу) |
+| Плагины Claude Code | `aidev-claude-plugins --update` в каждом проекте (плагины хранятся в проектном томе) |
 | Features (`:1`) | Мажорная версия закреплена. Minor/patch и `latest`-версии инструментов подтягиваются при Rebuild |
 | GitHub Actions, базовый `ubuntu` | Dependabot (`.github/dependabot.yml`) |
 
@@ -222,7 +228,8 @@ GitHub Actions (`.github/workflows/`):
 ## Безопасность
 
 Контейнер считается песочницей для `claude --dangerously-skip-permissions` (алиас `ccy`).
-Учитывайте, что внутри у агента есть sudo без пароля, сетевой доступ и общие тома с токенами
-всех AI-CLI, gh и glab. Если проект недоверенный, переопределите `mounts` на тома с другими
-именами или используйте ограничение исходящего трафика (по образцу `init-firewall.sh` из
-референсного devcontainer Claude Code).
+Учитывайте, что внутри у агента есть sudo без пароля, сетевой доступ и учётные данные **этого** проекта
+(тома других проектов ему не видны). Общий с другими проектами только кэш пакетов `aidev-pkgcache`.
+Если в нём не должно быть чужих приватных зависимостей, изолируйте его (см. выше). Для недоверенного кода
+стоит дополнительно ограничить исходящий трафик (по образцу `init-firewall.sh` из референсного devcontainer
+Claude Code).

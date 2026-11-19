@@ -1,5 +1,8 @@
 # aidev: базовый devcontainer для AI-assisted разработки
 
+> **Агентам:** если вы собираете окружение для проекта, читайте [docs/agent-guide.md](docs/agent-guide.md)
+> (в контейнере: `/usr/share/doc/aidev/agent-guide.md`). Если меняете этот репозиторий, читайте [AGENTS.md](AGENTS.md).
+
 Устроен в три слоя:
 
 | Слой | Что входит | Где |
@@ -131,7 +134,7 @@ features запускают `aidev-device-groups`: он создаёт груп�
 ## Сборка и публикация
 
 ```bash
-make image                    # docker build → ghcr.io/tualua/aidev:latest и aidev:dev
+make image                    # docker build -f image/Dockerfile . → ghcr.io/tualua/aidev:latest и aidev:dev
 make image-fresh              # без кэша: свежие Claude Code/opencode/qwen, Go, Node, uv-инструменты
 make image ENGINE=podman
 make image BUILD_ARGS="--build-arg GO_VERSION=1.26.3 --build-arg CLAUDE_CODE_VERSION=latest"

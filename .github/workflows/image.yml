@@ -2,7 +2,7 @@ name: image
 on:
   push:
     branches: [main]
-    paths: ["image/**", ".github/workflows/image.yml"]
+    paths: ["image/**", "docs/agent-guide.md", ".github/workflows/image.yml"]
   schedule:
     - cron: "0 4 * * 1"   # еженедельно: свежие AI CLI, Go, Node, патчи безопасности
   workflow_dispatch:
@@ -35,7 +35,8 @@ jobs:
             type=sha,format=short
       - uses: docker/build-push-action@v6
         with:
-          context: image
+          context: .
+          file: image/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

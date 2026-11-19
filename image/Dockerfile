@@ -3,6 +3,7 @@
 # aidev — базовый образ для AI-assisted разработки.
 # Go / Python / Shell / Ansible / Node(JS/TS) + tmux + Claude Code / opencode / qwen-code.
 # Всё проектно-специфичное (terraform, govc, k8s, Intel GPU, USB) — в devcontainer features.
+# Контекст сборки — корень репозитория: docker build -f image/Dockerfile .
 
 ARG UBUNTU_VERSION=26.04
 FROM ghcr.io/astral-sh/uv:latest AS uv
@@ -126,7 +127,8 @@ RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi \
     && git config --system credential.https://gitlab.com.helper '' \
     && git config --system --add credential.https://gitlab.com.helper '!glab auth git-credential' 
 
-COPY rootfs/ /
+COPY image/rootfs/ /
+COPY docs/agent-guide.md /usr/share/doc/aidev/agent-guide.md
 
 ENV GOPATH=/home/${USERNAME}/go \
     GOTOOLCHAIN=auto \

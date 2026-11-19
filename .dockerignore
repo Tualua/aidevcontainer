@@ -1,0 +1,4 @@
+# Контекст сборки образа — корень репозитория; нужны только image/ и docs/agent-guide.md
+*
+!image/rootfs/
+!docs/agent-guide.md

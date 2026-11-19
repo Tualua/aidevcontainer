@@ -9,7 +9,7 @@ BUILD_ARGS ?=
 .PHONY: image image-fresh push features-sync features-test features-publish lint clean
 
 image:  ## Собрать базовый образ (+ локальный тег aidev:dev)
-	$(ENGINE) build $(BUILD_ARGS) -t $(IMAGE):$(TAG) -t aidev:dev image/
+	$(ENGINE) build $(BUILD_ARGS) -f image/Dockerfile -t $(IMAGE):$(TAG) -t aidev:dev .
 
 image-fresh:  ## Без кэша: подтянуть последние AI CLI, Go, Node, плагины и т.п.
 	$(MAKE) image BUILD_ARGS="$(BUILD_ARGS) --no-cache --pull"

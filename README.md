@@ -200,7 +200,7 @@ make push features-publish REGISTRY=registry.example.com/team
 
 GitHub Actions (`.github/workflows/`):
 
-- **image.yml** собирает образ под amd64 и arm64 при изменениях и **раз в неделю**.
+- **image.yml** собирает образ под amd64 при изменениях и **раз в неделю**.
   Плановая и ручная сборки идут без кэша, чтобы обновлялись AI CLI, Go, Node и патчи. Теги: `latest`, `YYYYMMDD`, `sha-xxxx`.
 - **features.yml** публикует features в `ghcr.io/<owner>/aidevcontainer/<id>`.
 

@@ -8,7 +8,7 @@
 
 **Результат работы агента:** каталог `.devcontainer/` в репозитории проекта
 (`devcontainer.json`, при необходимости `Dockerfile`), проверенный запуском, плюс короткий отчёт
-оператору (см. [§8](#8-отчёт-оператору)).
+оператору (см. [§9](#9-отчёт-оператору)).
 
 ---
 
@@ -38,11 +38,20 @@ Ubuntu 26.04. Пользователь `dev` (uid 1000, passwordless sudo), shel
 | Shell | shellcheck, shfmt, bats |
 | Git | git, git-lfs, delta, `gh`, `glab` |
 | Утилиты | tmux, jq, yq (mikefarah), ripgrep, fd, fzf, bat, direnv, just, make, build-essential, сетевые утилиты |
+| Для агента | ast-grep, gotestsum, scc; LSP-плагины Claude Code `gopls-lsp`, `pyright-lsp`, `typescript-lsp` |
+| Для оператора | lazygit, glow, zoxide, `aidev-tmux`, `aidev-notify` |
 
 Уже настроено в метаданных образа (label `devcontainer.metadata`), в проекте **не повторять**:
 `remoteUser`, `containerUser`, `init`, `updateRemoteUserUID`, тома (ниже), терминал zsh,
 расширения VS Code для Go/Python/Ruff/Ansible/ShellCheck/YAML/GitHub/GitLab/Claude Code,
 отключённая автоактивация venv, `postCreateCommand` для плагинов Claude.
+
+Claude Code: в `/etc/claude-code/managed-settings.d/50-aidev.json` разрешены проверочные команды
+(тесты, сборка, линтеры, чтение git) и подключены хуки уведомлений. Эти настройки **объединяются** с
+пользовательскими и проектными. Проектные разрешения кладите в `.claude/settings.json` проекта
+(например, `Bash(make e2e *)`), базовые не повторяйте. Не создавайте `managed-settings.json`
+в проекте или производном образе без просьбы оператора: это корпоративный уровень, и испорченный файл
+не даёт Claude Code запуститься.
 
 Общие тома (одни на все проекты оператора, авторизация делается один раз):
 
@@ -123,7 +132,7 @@ aidevcontainer. Возьмите ближайший, удалите лишнее
 - Конфиги с секретами (kubeconfig, `.vault_pass`) лежат в томах или монтируются read-only
   с хоста: `"source=${localEnv:HOME}/.kube/config-prod,target=/home/dev/.kube/config,type=bind,readonly"`.
   Предварительно спросите оператора, где они лежат.
-- Список переменных, которые оператор должен задать на хосте, обязательно включите в отчёт (§8).
+- Список переменных, которые оператор должен задать на хосте, обязательно включите в отчёт (§9).
 
 ### 3.6. Если нужного инструмента нет
 
@@ -227,7 +236,20 @@ Serial-порт, появившийся после старта: `sudo aidev-ser
 - Не используйте `--privileged` и `--network=host`, если оператор явно не попросил.
 - Не добавляйте `forwardPorts` «на всякий случай», только реальные порты проекта.
 
-## 6. Проверка (обязательно перед отчётом)
+## 6. Работа агента внутри окружения: экономия времени и контекста
+
+- **Обзор незнакомого репозитория:** `scc --no-cocomo` (языки и объём), `tree -L 2 -d`, `git log --oneline -20`.
+- **Поиск по коду:** `rg` для текста, `ast-grep` для структуры: `ast-grep run -p 'fmt.Errorf($$$)' -l go`.
+  Массовая замена: `ast-grep run -p 'old($A)' -r 'new($A)' -l go -U`. Это надёжнее sed.
+- **Тесты с компактным выводом:** `gotestsum --format pkgname -- ./...`, `uv run pytest -q --tb=short`,
+  `ruff check --output-format concise`, `golangci-lint run --output.text.print-issued-lines=false`.
+- **LSP:** плагины gopls, pyright и typescript дают диагностику сразу после правки, а также переход к
+  определению и поиск использований. Используйте их вместо грепа по именам.
+- **Параллельная работа:** `aidev-tmux <task>` запускает отдельного агента в своём worktree. Не правьте
+  чужой worktree.
+- **Долгая операция:** по завершении вызовите `aidev-notify "заголовок" "текст"`, чтобы оператор узнал.
+
+## 7. Проверка (обязательно перед отчётом)
 
 Нужен devcontainer CLI (`npx -y @devcontainers/cli` или `devcontainer`) и доступ к Docker/Podman.
 Если агент работает внутри контейнера без доступа к движку, пропустите проверку и **явно
@@ -263,7 +285,7 @@ devcontainer exec --workspace-folder . zsh -lc 'make test'
 
 Если отладку USB или GPU нельзя проверить (нет устройства), так и напишите в отчёте.
 
-## 7. Примеры
+## 8. Примеры
 
 **Go-сервис + Python-скрипты:**
 ```jsonc
@@ -332,7 +354,7 @@ USER dev
 { "name": "${localWorkspaceFolderBasename}", "build": { "dockerfile": "Dockerfile" } }
 ```
 
-## 8. Отчёт оператору
+## 9. Отчёт оператору
 
 Коротко, по пунктам:
 

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Рабочая tmux-сессия проекта и параллельные агенты в отдельных git worktree.
+#
+#   aidev-tmux               сессия проекта (создать или подключиться): окна agent / shell / test
+#   aidev-tmux <task> [...]  новое окно с агентом в отдельном worktree: claude -w <task> [доп. аргументы claude]
+#   aidev-tmux -l            список worktree проекта
+#   aidev-tmux -h            справка
+#
+# Worktree создаёт сам Claude Code (`claude --worktree <task>`): каталог .claude/worktrees/<task>,
+# ветка worktree-<task> от ветки по умолчанию. Все агенты — окна одной сессии проекта.
+# После слияния: git worktree remove .claude/worktrees/<task> && git branch -d worktree-<task>
+# AIDEV_AGENT_CMD — команда агента в окне agent (по умолчанию claude); окна задач — всегда claude.
+set -euo pipefail
+
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# Внутри worktree — берём основной репозиторий, чтобы все агенты были в одной сессии
+common="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+[ -n "$common" ] && [ "$(basename "$common")" = .git ] && root="$(dirname "$common")"
+session="$(basename "$root")"; session="${session//[^A-Za-z0-9_-]/_}"
+agent="${AIDEV_AGENT_CMD:-claude}"
+
+ensure_session() {
+    tmux has-session -t "=$session" 2>/dev/null && return
+    tmux new-session -d -s "$session" -n agent -c "$root"
+    tmux new-window -d -t "=$session:" -n shell -c "$root"
+    tmux new-window -d -t "=$session:" -n test  -c "$root"
+    tmux send-keys -t "=$session:agent" "$agent" C-m
+}
+
+attach() {
+    if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$session"
+    else tmux attach-session -t "=$session"; fi
+}
+
+case "${1:-}" in
+    -h|--help) usage ;;
+    -l|--list) git -C "$root" worktree list ;;
+    "") ensure_session; attach ;;
+    -*) usage; exit 2 ;;
+    *)
+        task="$1"; shift
+        git -C "$root" rev-parse --git-dir >/dev/null 2>&1 \
+            || { echo "aidev-tmux: $root — не git-репозиторий, worktree невозможен" >&2; exit 1; }
+        ensure_session
+        # окно остаётся после выхода агента (exec zsh) — можно посмотреть итог
+        tmux new-window -t "=$session:" -n "$task" -c "$root" \
+            "$(printf '%q ' claude --worktree "$task" "$@"); exec ${SHELL:-zsh}"
+        attach ;;
+esac

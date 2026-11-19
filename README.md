@@ -32,6 +32,10 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
   нет Nerd Font, выполните `starship preset plain-text-symbols -o ~/.config/starship.toml` и задайте
   `STARSHIP_CONFIG`. Чтобы вернуть тему oh-my-zsh, задайте `AIDEV_PROMPT=omz`
   (тему выбирает `ZSH_THEME`).
+- **Для агента:** ast-grep (структурный поиск и замена), gotestsum (компактный вывод тестов), scc (обзор кодовой базы),
+  LSP-плагины Claude Code для Go, Python и TS (gopls, pyright, typescript-language-server уже в образе)
+- **Для оператора:** lazygit (ревью изменений агента), glow (markdown в терминале), zoxide (`z <часть пути>`),
+  `aidev-tmux` (сессия и параллельные агенты), `aidev-notify` (уведомления)
 - **Утилиты:** tmux, jq, yq (mikefarah), ripgrep, fd, fzf, bat, direnv, just, сетевые утилиты
 
 Настройки devcontainer зашиты в label `devcontainer.metadata`. Поэтому проекту достаточно
@@ -61,6 +65,13 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
   через `glab auth login`; SSH к gitlab.com тоже работает (ключ сервера есть в `ssh_known_hosts`).
   Для self-hosted GitLab выполните `glab auth login --hostname <host>` и
   `git config --global credential.https://<host>.helper '!glab auth git-credential'`;
+- **Разрешения и хуки Claude Code по умолчанию** лежат в `/etc/claude-code/managed-settings.d/50-aidev.json`:
+  - проверочные команды (тесты, сборка, линтеры, чтение git) разрешены без подтверждения. Ничего, что ходит
+    в реальную инфраструктуру (`terraform plan`, `ansible-playbook`, `kubectl`) или меняет историю git;
+  - хуки `Notification` и `Stop` вызывают `aidev-notify`.
+
+  Всё это **добавляется** к пользовательским и проектным настройкам, ничего не блокирует. Свои правила
+  задавайте как обычно, в `~/.claude/settings.json` или `.claude/settings.json` проекта;
 - **venv не активируется автоматически** (`python.terminal.activateEnvironment: false`,
   `python-envs.terminal.autoActivationType: off`): при reload окна в терминалы ничего не
   отправляется. Используйте `uv run ...` или активируйте `source .venv/bin/activate` вручную;
@@ -104,6 +115,31 @@ npm i -g @devcontainers/cli
 devcontainer up --workspace-folder .
 devcontainer exec --workspace-folder . tmux new -A -s main
 ```
+
+## Работа с агентами
+
+**Сессия и параллельные агенты** (`aidev-tmux`):
+
+```bash
+aidev-tmux                      # tmux-сессия проекта: окна agent (запущен claude) / shell / test
+aidev-tmux fix-auth             # новое окно: claude -w fix-auth, отдельный worktree и ветка worktree-fix-auth
+aidev-tmux bump-deps --model sonnet   # то же, с аргументами claude
+aidev-tmux -l                   # список worktree
+```
+
+Worktree лежат в `.claude/worktrees/<task>`. После слияния:
+`git worktree remove .claude/worktrees/<task> && git branch -d worktree-<task>`.
+Ревью изменений агента удобно делать в `lazygit`.
+
+**Уведомления** (`aidev-notify`): «агент закончил» (Stop) и «агент ждёт ответа» (Notification).
+
+- **На рабочий стол хоста** уведомления идут через OSC 777. Его поддерживают GNOME Terminal и Ptyxis
+  (Fedora), Ghostty, WezTerm, foot. Внутри tmux тоже работает (`allow-passthrough` включён).
+  **Терминал VS Code OSC 777 не поддерживает**.
+- **На телефон или в браузер** через [ntfy](https://ntfy.sh): задайте `AIDEV_NTFY_TOPIC` (длинное случайное
+  имя: топики на ntfy.sh публичные), при необходимости `AIDEV_NTFY_URL` и `AIDEV_NTFY_TOKEN` для своего сервера.
+  Проще всего через `containerEnv` с `${localEnv:AIDEV_NTFY_TOPIC}`.
+- Вручную после долгой команды: `make build; aidev-notify`. Выключить: `AIDEV_NOTIFY=off`.
 
 ## Устройства
 

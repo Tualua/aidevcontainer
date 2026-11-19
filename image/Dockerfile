@@ -127,8 +127,6 @@ RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi \
     && git config --system credential.https://gitlab.com.helper '' \
     && git config --system --add credential.https://gitlab.com.helper '!glab auth git-credential' 
 
-COPY image/rootfs/ /
-COPY docs/agent-guide.md /usr/share/doc/aidev/agent-guide.md
 
 ENV GOPATH=/home/${USERNAME}/go \
     GOTOOLCHAIN=auto \
@@ -139,8 +137,6 @@ ENV GOPATH=/home/${USERNAME}/go \
     EDITOR=vi \
     SHELL=/usr/bin/zsh \
     STARSHIP_CONFIG=/etc/aidev/starship.toml \
-    AIDEV_CLAUDE_MARKETPLACES="open-gsd/gsd-core" \
-    AIDEV_CLAUDE_PLUGINS="gsd-core@gsd-core" \
     PATH=/home/${USERNAME}/.local/bin:/home/${USERNAME}/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # ВАЖНО: тяжёлые инструменты ставим ВНЕ $HOME (root-owned, обновляются пересборкой образа).
@@ -157,6 +153,10 @@ RUN export GOBIN=/usr/local/bin GOPATH=/tmp/gopath GOCACHE=/tmp/gocache \
     && go install golang.org/x/tools/cmd/goimports@latest \
     && go install github.com/go-delve/delve/cmd/dlv@latest \
     && go install mvdan.cc/gofumpt@latest \
+    && go install gotest.tools/gotestsum@latest \
+    && go install github.com/boyter/scc/v3@latest \
+    && go install github.com/jesseduffield/lazygit@latest \
+    && go install github.com/charmbracelet/glow/v2@latest \
     && rm -rf /tmp/gopath /tmp/gocache
 
 # Python / Ansible инструменты (изолированные окружения uv tool) → /opt/uv-tools, бинарники в /usr/local/bin
@@ -166,6 +166,7 @@ RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_IN
     && uv tool install pre-commit \
     && uv tool install ansible-core \
     && uv tool install ansible-lint \
+    && uv tool install ast-grep-cli \
     && rm -rf /tmp/uv-cache
 
 # LSP для JS/TS/Python + opencode, qwen-code → /usr/local
@@ -175,9 +176,28 @@ RUN npm install -g --prefix /usr/local --no-fund --no-audit \
         "@qwen-code/qwen-code@${QWEN_CODE_VERSION}" \
     && npm cache clean --force && rm -rf /root/.npm
 
+# zoxide — бинарник из релиза (apt-get update в позднем слое стоит минуты из-за зеркала).
+# Своих sha256 у проекта нет — берём digest файла из GitHub API.
+RUN case "$(dpkg --print-architecture)" in amd64) t=x86_64;; arm64) t=aarch64;; esac \
+    && rel="$(curl -fsSL https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest)" \
+    && url="$(jq -r --arg t "$t" '.assets[] | select(.name | endswith("-" + $t + "-unknown-linux-musl.tar.gz")) | .browser_download_url' <<<"$rel")" \
+    && sha="$(jq -r --arg u "$url" '.assets[] | select(.browser_download_url == $u) | .digest | sub("^sha256:"; "")' <<<"$rel")" \
+    && curl -fsSL "$url" -o /tmp/zoxide.tgz \
+    && echo "$sha  /tmp/zoxide.tgz" | sha256sum -c - \
+    && tar -C /usr/local/bin -xzf /tmp/zoxide.tgz zoxide && rm /tmp/zoxide.tgz
+
+# Конфиги и скрипты aidev — поздним слоем: их правка не пересобирает тяжёлые слои выше
+COPY image/rootfs/ /
+COPY docs/agent-guide.md /usr/share/doc/aidev/agent-guide.md
+
+# Плагины Claude Code, которые ставит aidev-claude-plugins (postCreate); проект может переопределить
+ENV AIDEV_CLAUDE_MARKETPLACES="open-gsd/gsd-core anthropics/claude-plugins-official" \
+    AIDEV_CLAUDE_PLUGINS="gsd-core@gsd-core gopls-lsp@claude-plugins-official pyright-lsp@claude-plugins-official typescript-lsp@claude-plugins-official"
+
 # Каталоги, на которые монтируются тома (см. LABEL ниже) — создаём заранее,
 # чтобы новый том получил правильного владельца.
-RUN h="/home/${USERNAME}" \
+RUN for f in /etc/claude-code/managed-settings.d/*.json; do jq empty "$f" || exit 1; done \
+    && h="/home/${USERNAME}" \
     && install -d -o "${USERNAME}" -g "${USERNAME}" \
         "$h/.claude" "$h/.qwen" "$h/.config" "$h/.config/opencode" "$h/.config/gh" "$h/.config/glab-cli" \
         "$h/.local" "$h/.local/bin" "$h/.local/share" "$h/.local/share/opencode" \

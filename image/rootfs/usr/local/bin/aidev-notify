@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Уведомление оператору: «агент закончил» / «агент ждёт ответа».
+#
+# 1) Хук Claude Code (Notification, Stop; см. /etc/claude-code/managed-settings.d/50-aidev.json):
+#    JSON события на stdin → на stdout {"terminalSequence": "<OSC 777>"}; Claude Code сам выводит
+#    его в терминал (хуки не имеют доступа к /dev/tty). В tmux нужен `allow-passthrough on` —
+#    в /etc/tmux.conf aidev он включён.
+# 2) Вручную:  aidev-notify ["заголовок" ["текст"]]   (например: make build; aidev-notify)
+#    пишет прямо в /dev/tty (в tmux — через passthrough).
+#
+# OSC 777 показывают как уведомление рабочего стола GNOME Terminal/Ptyxis (VTE), Ghostty, WezTerm,
+# foot, urxvt и др. Терминал VS Code его не поддерживает — используйте ntfy.
+#
+# ntfy (телефон/браузер), если задан AIDEV_NTFY_TOPIC; сервер AIDEV_NTFY_URL (по умолчанию
+# https://ntfy.sh), токен AIDEV_NTFY_TOKEN.  Отключить всё: AIDEV_NOTIFY=off.
+set -uo pipefail
+[ "${AIDEV_NOTIFY:-on}" = off ] && exit 0
+
+project="$(basename "${CLAUDE_PROJECT_DIR:-$PWD}")"
+title="${1:-}" body="${2:-}" hook=""
+
+if [ $# -eq 0 ] && [ ! -t 0 ]; then
+    input="$(cat)"
+    event="$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null)"
+    if [ -n "$event" ]; then
+        hook=1
+        case "$event" in
+            Stop|SubagentStop)
+                # повторный Stop после блокирующего хука — не дублируем
+                [ "$(jq -r '.stop_hook_active // false' <<<"$input")" = true ] && exit 0
+                title="✅ $project: агент закончил"
+                body="$(jq -r '.last_assistant_message // "" | gsub("\\s+"; " ") | .[0:120]' <<<"$input")"
+                body="${body:-ждёт следующей задачи}" ;;
+            Notification)
+                title="⏳ $project: $(jq -r '.title // "нужно внимание"' <<<"$input")"
+                body="$(jq -r '.message // ""' <<<"$input")" ;;
+            *)  title="$project: $event"
+                body="$(jq -r '.message // ""' <<<"$input")" ;;
+        esac
+    fi
+fi
+title="${title:-$project}"
+body="${body:-готово}"
+
+# В OSC нельзя управляющие символы и ';' (разделитель полей)
+clean() { printf '%s' "$1" | tr -d '\000-\037\177' | tr ';' ',' | cut -c1-200; }
+t="$(clean "$title")" b="$(clean "$body")"
+osc=$'\e]777;notify;'"$t;$b"$'\a'
+
+# --- терминал ---
+if [ -n "$hook" ]; then
+    jq -nc --arg seq "$osc" '{terminalSequence: $seq}'
+elif { : > /dev/tty; } 2>/dev/null; then
+    seq="$osc"
+    # tmux: оборачиваем в passthrough (ESC внутри удваивается) + BEL для метки окна
+    [ -n "${TMUX:-}" ] && seq=$'\ePtmux;'"${osc//$'\e'/$'\e\e'}"$'\e\\'$'\a'
+    printf '%s' "$seq" > /dev/tty
+fi
+
+# --- ntfy ---
+if [ -n "${AIDEV_NTFY_TOPIC:-}" ]; then
+    auth=()
+    [ -n "${AIDEV_NTFY_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $AIDEV_NTFY_TOKEN")
+    # в фоне и без вывода: stdout хука должен содержать только JSON
+    curl -fsS -m 5 "${auth[@]}" -H "Title: $t" -d "$b" \
+        "${AIDEV_NTFY_URL:-https://ntfy.sh}/$AIDEV_NTFY_TOPIC" </dev/null >/dev/null 2>&1 &
+fi
+exit 0

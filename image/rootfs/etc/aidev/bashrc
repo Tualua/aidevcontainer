@@ -7,11 +7,12 @@ shopt -s histappend
 PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 
 # fzf: Ctrl-R / Ctrl-T / Alt-C
-[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && . /usr/share/doc/fzf/examples/key-bindings.bash
+command -v fzf >/dev/null && eval "$(fzf --bash)"
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
 
 # direnv: .envrc в проекте
 command -v direnv >/dev/null && eval "$(direnv hook bash)"
+command -v zoxide >/dev/null && eval "$(zoxide init bash)"
 
 # Completion для инструментов вне apt
 command -v uv  >/dev/null && eval "$(uv generate-shell-completion bash)"

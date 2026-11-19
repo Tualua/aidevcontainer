@@ -11,7 +11,7 @@
 | Путь | Что |
 |---|---|
 | `image/Dockerfile` | Базовый образ. Контекст сборки — **корень репозитория** (`-f image/Dockerfile .`), см. `.dockerignore` |
-| `image/rootfs/` | Файлы, копируемые в образ: `/etc/aidev/{zshrc,bashrc,starship.toml}`, `/etc/tmux.conf`, `/usr/local/bin/aidev-*` |
+| `image/rootfs/` | Файлы, копируемые в образ (поздним слоем): `/etc/aidev/{zshrc,bashrc,starship.toml}`, `/etc/tmux.conf`, `/usr/local/bin/aidev-*`, `/etc/claude-code/managed-settings.d/50-aidev.json` |
 | `features/src/<id>/` | Features: `devcontainer-feature.json` + `install.sh` |
 | `features/lib/common.sh` | Общие функции features. **Копируется** в каждую feature (`make features-sync`), копии в `.gitignore` |
 | `features/test/<id>/test.sh` | Тесты features |
@@ -36,7 +36,12 @@
    Устройства пробрасываются только из проекта (`runArgs`), не из feature.
 7. **Меняя поведение для проектов** (тома, env, lifecycle, features), обновите `docs/agent-guide.md`
    и `README.md`. При несовместимом изменении feature поднимите мажорную версию в `devcontainer-feature.json`.
-8. Изменения в ранних слоях Dockerfile (apt, пользователь) пересобирают всё после них, это долго.
+8. **`50-aidev.json` только добавляет.** Не задавайте в нём `allowManagedPermissionRulesOnly`,
+   `allowManagedHooksOnly` и deny-правила без просьбы оператора. В allow попадают только проверочные
+   команды без доступа к реальной инфраструктуре. Невалидный JSON не даёт Claude Code запуститься (сборка проверяет через `jq`).
+9. **Хуки не имеют TTY.** Вывод в терминал идёт только через `{"terminalSequence": ...}`
+   (допустимы OSC 0/1/2/9/99/777 и BEL, иначе поле игнорируется), stdout хука должен содержать только JSON.
+10. Изменения в ранних слоях Dockerfile (apt, пользователь) пересобирают всё после них, это долго.
    Новое по возможности добавляйте в поздние слои.
 
 ## Проверка изменений

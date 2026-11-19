@@ -17,7 +17,7 @@ ZSH_DISABLE_COMPFIX=true            # тома/updateRemoteUserUID дают «н
 plugins=(${=AIDEV_OMZ_PLUGINS:-
     git gh golang python uv pip ansible
     kubectl helm terraform
-    fzf direnv tmux sudo extract colored-man-pages history-substring-search
+    fzf direnv zoxide tmux sudo extract colored-man-pages history-substring-search
 })
 
 # История — в отдельном томе, переживает пересоздание контейнера

@@ -1,0 +1,57 @@
+# Общий конфиг starship для aidev (STARSHIP_CONFIG=/etc/aidev/starship.toml).
+# Свой конфиг: export STARSHIP_CONFIG=~/.config/starship.toml в ~/.zshrc.d/.
+# Нет Nerd Font в терминале хоста:
+#   starship preset plain-text-symbols -o ~/.config/starship.toml
+"$schema" = "https://starship.rs/config-schema.json"
+
+add_newline = false
+command_timeout = 1000
+
+format = """
+$container\
+$hostname\
+$directory\
+$git_branch\
+$git_state\
+$git_status\
+$golang\
+$python\
+$nodejs\
+$terraform\
+$kubernetes\
+$cmd_duration\
+$jobs\
+$line_break\
+$character"""
+
+[container]
+format = '[⬢ $name]($style) '
+style = "bold blue"
+
+[directory]
+truncation_length = 4
+truncate_to_repo = true
+
+[git_status]
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+
+[python]
+# показывать активный venv (uv: .venv)
+format = '[${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style)'
+
+[terraform]
+format = '[$symbol$workspace]($style) '
+
+[kubernetes]
+disabled = false
+format = '[⎈ $context( \($namespace\))]($style) '
+style = "bold purple"
+# Подсветка продовых контекстов:
+# [[kubernetes.contexts]]
+# context_pattern = ".*prod.*"
+# style = "bold red"
+
+[cmd_duration]
+min_time = 3_000

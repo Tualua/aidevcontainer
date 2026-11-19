@@ -1,0 +1,3 @@
+# генерируются make features-sync
+features/src/*/common.sh
+features/src/*/aidev-device-groups

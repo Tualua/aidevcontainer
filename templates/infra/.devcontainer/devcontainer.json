@@ -1,0 +1,18 @@
+// Инфраструктурный проект: Ansible (в базе) + Terraform + vSphere + Kubernetes.
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "image": "ghcr.io/tualua/aidev:latest",
+    "features": {
+        "ghcr.io/tualua/aidevcontainer/terraform:1": {},
+        "ghcr.io/tualua/aidevcontainer/govc:1": {},
+        "ghcr.io/tualua/aidevcontainer/kubernetes:1": { "stern": true }
+    },
+    // Ansible-коллекции и python-зависимости проекта:
+    // "postCreateCommand": "ansible-galaxy install -r requirements.yml",
+    "containerEnv": {
+        // Секреты не храните в devcontainer.json — берите из окружения хоста:
+        "GOVC_URL": "${localEnv:GOVC_URL}",
+        "GOVC_USERNAME": "${localEnv:GOVC_USERNAME}",
+        "GOVC_PASSWORD": "${localEnv:GOVC_PASSWORD}"
+    }
+}

@@ -1,0 +1,14 @@
+// Проект с Intel GPU (OpenCL / Level Zero / VA-API).
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "image": "ghcr.io/tualua/aidev:latest",
+    "features": {
+        "ghcr.io/tualua/aidevcontainer/intel-gpu:1": {
+            // "devel": true
+        }
+    },
+    "runArgs": [
+        "--device=/dev/dri"
+        // Podman rootless: добавьте "--group-add=keep-groups" (пользователь хоста должен быть в группе render)
+    ]
+}

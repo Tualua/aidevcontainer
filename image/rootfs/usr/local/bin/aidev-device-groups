@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Делает проброшенные с хоста устройства доступными пользователю контейнера.
+#
+# GID групп хоста (render, video, plugdev, dialout...) обычно не совпадают с GID
+# внутри контейнера. Скрипт смотрит GID каждого устройства, при необходимости
+# создаёт группу с таким GID и добавляет в неё пользователя. Новые сессии
+# (терминалы VS Code, `docker exec`) получат эти группы автоматически.
+#
+# Запуск: aidev-device-groups [user]   (вызывается из postStartCommand features)
+set -euo pipefail
+user="${1:-${_REMOTE_USER:-$(id -un)}}"
+[ "$(id -u)" -eq 0 ] || exec sudo -n "$0" "$user"
+
+shopt -s nullglob
+declare -A seen=()
+for dev in /dev/dri/* /dev/bus/usb/*/* /dev/ttyACM* /dev/ttyUSB* /dev/hidraw* /dev/accel/*; do
+    [ -c "$dev" ] || continue
+    gid="$(stat -c %g "$dev")"
+    [ "$gid" -eq 0 ] && continue
+    [ -n "${seen[$gid]:-}" ] && continue
+    seen[$gid]=1
+    group="$(getent group "$gid" | cut -d: -f1 || true)"
+    if [ -z "$group" ]; then
+        group="host-$gid"
+        groupadd -g "$gid" "$group"
+    fi
+    if ! id -nG "$user" | tr ' ' '\n' | grep -qx "$group"; then
+        usermod -aG "$group" "$user"
+        echo "aidev-device-groups: $user += $group ($gid) for $dev"
+    fi
+done

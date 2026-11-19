@@ -1,0 +1,10 @@
+{
+    "id": "govc",
+    "version": "1.0.0",
+    "name": "govc (vSphere CLI)",
+    "description": "govc из vmware/govmomi",
+    "options": {
+        "version": { "type": "string", "default": "latest", "description": "Тег релиза govmomi (latest или v0.x.y)" }
+    },
+    "containerEnv": { "GOVC_INSECURE": "1" }
+}

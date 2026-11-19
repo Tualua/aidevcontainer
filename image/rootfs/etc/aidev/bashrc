@@ -1,0 +1,30 @@
+# Подключается из ~/.bashrc пользователя (см. Dockerfile).
+
+# История — в отдельном томе, переживает пересоздание контейнера
+export HISTFILE="$HOME/.commandhistory/.bash_history"
+export HISTSIZE=100000 HISTFILESIZE=200000 HISTCONTROL=ignoreboth:erasedups
+shopt -s histappend
+PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
+# fzf: Ctrl-R / Ctrl-T / Alt-C
+[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && . /usr/share/doc/fzf/examples/key-bindings.bash
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+
+# direnv: .envrc в проекте
+command -v direnv >/dev/null && eval "$(direnv hook bash)"
+
+# Completion для инструментов вне apt
+command -v uv  >/dev/null && eval "$(uv generate-shell-completion bash)"
+command -v gh   >/dev/null && eval "$(gh completion -s bash)"
+command -v glab >/dev/null && eval "$(glab completion -s bash)"
+command -v just >/dev/null && eval "$(just --completions bash 2>/dev/null)"
+
+[ "${AIDEV_PROMPT:-starship}" = starship ] && command -v starship >/dev/null && eval "$(starship init bash)"
+
+alias ll='ls -alF' la='ls -A' l='ls -CF'
+alias ccy='claude --dangerously-skip-permissions'
+
+# Локальные дополнения проекта/пользователя
+# shellcheck disable=SC1090
+for f in /etc/aidev/bashrc.d/*.sh "$HOME"/.bashrc.d/*.sh; do [ -r "$f" ] && . "$f"; done
+unset f

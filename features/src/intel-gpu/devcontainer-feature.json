@@ -1,0 +1,14 @@
+{
+    "id": "intel-gpu",
+    "version": "1.0.0",
+    "name": "Intel GPU userspace",
+    "description": "OpenCL / Level Zero / VA-API для Intel GPU. Устройство /dev/dri пробрасывается в devcontainer.json проекта (runArgs).",
+    "options": {
+        "compute":   { "type": "boolean", "default": true,  "description": "OpenCL + Level Zero (intel-opencl-icd, libze-intel-gpu1)" },
+        "media":     { "type": "boolean", "default": true,  "description": "VA-API (intel-media-va-driver-non-free, vainfo)" },
+        "devel":     { "type": "boolean", "default": false, "description": "Заголовки: libze-dev, opencl-headers, ocl-icd-opencl-dev" },
+        "tools":     { "type": "boolean", "default": true,  "description": "clinfo, intel-gpu-tools (intel_gpu_top)" }
+    },
+    "containerEnv": { "LIBVA_DRIVER_NAME": "iHD" },
+    "postStartCommand": "/usr/local/bin/aidev-device-groups || true"
+}

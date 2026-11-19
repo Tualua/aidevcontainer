@@ -1,0 +1,27 @@
+// Проект с USB-отладчиками (ST-Link, J-Link, CMSIS-DAP, ESP, DFU) и serial-консолями.
+//
+// /dev/bus/usb монтируется целиком — переподключение отладчика (новый номер устройства)
+// работает без перезапуска контейнера. Serial-узлы, появившиеся после старта:
+// `sudo aidev-serial-sync`.
+//
+// На ХОСТЕ должны быть udev-правила, дающие пользователю доступ к устройствам
+// (например 60-openocd.rules, 99-platformio-udev.rules, правила probe-rs).
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "image": "ghcr.io/tualua/aidev:latest",
+    "features": {
+        "ghcr.io/tualua/aidevcontainer/usb-debug:1": {
+            // "probeRs": true, "esptool": true
+        }
+    },
+    "runArgs": [
+        "--device-cgroup-rule=c 189:* rmw",   // USB (libusb)
+        "--device-cgroup-rule=c 166:* rmw",   // ttyACM*
+        "--device-cgroup-rule=c 188:* rmw"    // ttyUSB*
+    ],
+    "mounts": [
+        "type=bind,source=/dev/bus/usb,target=/dev/bus/usb"
+    ]
+    // Podman rootless: cgroup-правила не действуют — уберите runArgs выше и используйте
+    // "runArgs": ["--group-add=keep-groups"]; доступ определяется правами на устройства хоста.
+}

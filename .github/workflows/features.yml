@@ -1,0 +1,24 @@
+name: features
+on:
+  push:
+    branches: [main]
+    paths: ["features/**", "image/rootfs/usr/local/bin/aidev-device-groups", ".github/workflows/features.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make features-sync
+      - uses: devcontainers/action@v1
+        with:
+          publish-features: "true"
+          base-path-to-features: ./features/src
+          generate-docs: "false"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

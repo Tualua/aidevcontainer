@@ -1,0 +1,13 @@
+{
+    "id": "terraform",
+    "version": "1.0.0",
+    "name": "Terraform",
+    "description": "Terraform CLI (+ опционально tflint, OpenTofu)",
+    "options": {
+        "version":  { "type": "string",  "default": "latest", "description": "Версия Terraform (latest или 1.x.y)" },
+        "tflint":   { "type": "boolean", "default": true,  "description": "Установить tflint" },
+        "opentofu": { "type": "boolean", "default": false, "description": "Установить OpenTofu (tofu)" }
+    },
+    "customizations": { "vscode": { "extensions": ["hashicorp.terraform"] } },
+    "installsAfter": []
+}

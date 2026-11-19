@@ -1,0 +1,12 @@
+// Минимальный проект: Go / Python / Shell / Ansible / JS.
+// Всё остальное (пользователь, тома для авторизации AI-агентов, расширения VS Code)
+// приходит из label devcontainer.metadata базового образа.
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "image": "ghcr.io/tualua/aidev:latest"
+
+    // Проектно-специфичное — сюда:
+    // "features": { "ghcr.io/tualua/aidevcontainer/terraform:1": {} },
+    // "postCreateCommand": "uv sync && go mod download",
+    // "containerEnv": { "ANTHROPIC_MODEL": "..." }
+}

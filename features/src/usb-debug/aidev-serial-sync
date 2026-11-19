@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Создаёт в контейнере узлы /dev/ttyACM*, /dev/ttyUSB* для serial-устройств,
+# подключённых к хосту ПОСЛЕ старта контейнера (sysfs в контейнере — хостовый).
+# Нужен cgroup-доступ: --device-cgroup-rule='c 166:* rmw' (ACM), 'c 188:* rmw' (USB-serial).
+# Запускайте после переподключения отладчика:  sudo aidev-serial-sync
+set -euo pipefail
+shopt -s nullglob
+for sys in /sys/class/tty/ttyACM* /sys/class/tty/ttyUSB*; do
+    name="$(basename "$sys")"
+    [ -e "/dev/$name" ] && continue
+    IFS=: read -r major minor < "$sys/dev"
+    mknod -m 0660 "/dev/$name" c "$major" "$minor" && chgrp dialout "/dev/$name"
+    echo "aidev-serial-sync: created /dev/$name ($major:$minor)"
+done
+# Удаляем «висячие» узлы отключённых устройств
+for dev in /dev/ttyACM* /dev/ttyUSB*; do
+    [ -e "/sys/class/tty/$(basename "$dev")" ] || { rm -f "$dev"; echo "aidev-serial-sync: removed $dev"; }
+done

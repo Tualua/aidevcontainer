@@ -1,0 +1,13 @@
+{
+    "id": "usb-debug",
+    "version": "1.0.0",
+    "name": "USB / embedded debug tools",
+    "description": "openocd, gdb-multiarch, stlink, dfu-util, serial-терминалы; опционально probe-rs, pyocd, esptool. Устройства пробрасываются в devcontainer.json проекта (runArgs).",
+    "options": {
+        "probeRs": { "type": "boolean", "default": false, "description": "probe-rs (probe-rs, cargo-flash, cargo-embed)" },
+        "pyocd":   { "type": "boolean", "default": false, "description": "pyOCD (uv tool)" },
+        "esptool": { "type": "boolean", "default": false, "description": "esptool (uv tool)" }
+    },
+    "postStartCommand": "sudo /usr/local/bin/aidev-serial-sync; /usr/local/bin/aidev-device-groups || true",
+    "customizations": { "vscode": { "extensions": ["marus25.cortex-debug"] } }
+}

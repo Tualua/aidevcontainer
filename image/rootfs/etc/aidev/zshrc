@@ -1,0 +1,49 @@
+# Подключается из ~/.zshrc пользователя (см. Dockerfile).
+# Своё — в ~/.zshrc.d/*.zsh (или /etc/aidev/zshrc.d/*.zsh для производных образов).
+
+export ZSH="$HOME/.oh-my-zsh"
+# Промпт: starship (по умолчанию) или тема oh-my-zsh при AIDEV_PROMPT=omz
+if [[ "${AIDEV_PROMPT:-starship}" == starship ]] && (( $+commands[starship] )); then
+    ZSH_THEME=""
+else
+    ZSH_THEME="${ZSH_THEME:-robbyrussell}"
+fi
+DISABLE_AUTO_UPDATE=true            # oh-my-zsh обновляется пересборкой образа
+ZSH_DISABLE_COMPFIX=true            # тома/updateRemoteUserUID дают «небезопасные» права
+
+# Плагины, чьих команд нет в контейнере (kubectl, terraform...), просто ничего не делают —
+# поэтому список общий для базы и всех features.
+plugins=(${=AIDEV_OMZ_PLUGINS:-
+    git gh golang python uv pip ansible
+    kubectl helm terraform
+    fzf direnv tmux sudo extract colored-man-pages history-substring-search
+})
+
+# История — в отдельном томе, переживает пересоздание контейнера
+HISTFILE="$HOME/.commandhistory/.zsh_history"
+HISTSIZE=100000
+SAVEHIST=100000
+setopt INC_APPEND_HISTORY HIST_IGNORE_ALL_DUPS HIST_IGNORE_SPACE
+
+# Никакой автоактивации venv (мешает при reload окна). Явно: `source .venv/bin/activate` или `uv run`.
+PYTHON_AUTO_VRUN=false
+export VIRTUAL_ENV_DISABLE_PROMPT=1
+
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+
+source "$ZSH/oh-my-zsh.sh"
+
+# Completion для инструментов без плагинов oh-my-zsh
+(( $+commands[glab] )) && eval "$(glab completion -s zsh)" && compdef _glab glab
+(( $+commands[just] )) && eval "$(just --completions zsh 2>/dev/null)"
+
+[[ -z "$ZSH_THEME" ]] && eval "$(starship init zsh)"
+
+alias ccy='claude --dangerously-skip-permissions'
+
+for f in /etc/aidev/zshrc.d/*.zsh(N) "$HOME"/.zshrc.d/*.zsh(N); do source "$f"; done
+unset f
+
+# Должны быть последними
+source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

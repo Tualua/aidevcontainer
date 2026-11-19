@@ -1,6 +1,6 @@
 {
     "id": "kubernetes",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "Kubernetes tools",
     "description": "kubectl, helm, k9s, kubectx/kubens, stern",
     "options": {
@@ -11,7 +11,7 @@
         "stern":   { "type": "boolean", "default": false }
     },
     "mounts": [
-        { "source": "aidev-kube", "target": "/home/dev/.kube", "type": "volume" }
+        { "source": "aidev-kube-${devcontainerId}", "target": "/home/dev/.kube", "type": "volume" }
     ],
     "customizations": { "vscode": { "extensions": ["ms-kubernetes-tools.vscode-kubernetes-tools"] } }
 }

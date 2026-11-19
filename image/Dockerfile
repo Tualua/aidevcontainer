@@ -116,14 +116,14 @@ RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
     && git config --system safe.directory '*' \
     && git config --system init.defaultBranch main \
-    # GitHub — только HTTPS; авторизация токеном из `gh auth login` (том aidev-gh)
+    # GitHub — только HTTPS; авторизация токеном из `gh auth login` (том aidev-gh-<id проекта>)
     && git config --system url.https://github.com/.insteadOf git@github.com: \
     && git config --system --add url.https://github.com/.insteadOf ssh://git@github.com/ \
     && git config --system credential.https://github.com.helper '' \
     && git config --system --add credential.https://github.com.helper '!gh auth git-credential' \
     && git config --system credential.https://gist.github.com.helper '' \
     && git config --system --add credential.https://gist.github.com.helper '!gh auth git-credential' \
-    # gitlab.com по HTTPS — токеном из `glab auth login` (том aidev-glab); SSH тоже работает
+    # gitlab.com по HTTPS — токеном из `glab auth login` (том aidev-glab-<id проекта>); SSH тоже работает
     && git config --system credential.https://gitlab.com.helper '' \
     && git config --system --add credential.https://gitlab.com.helper '!glab auth git-credential' 
 
@@ -231,8 +231,8 @@ LABEL org.opencontainers.image.title="aidev" \
           {"source": "aidev-qwen",            "target": "/home/dev/.qwen",                 "type": "volume"}, \
           {"source": "aidev-opencode-config", "target": "/home/dev/.config/opencode",      "type": "volume"}, \
           {"source": "aidev-opencode-data",   "target": "/home/dev/.local/share/opencode", "type": "volume"}, \
-          {"source": "aidev-gh",              "target": "/home/dev/.config/gh",            "type": "volume"}, \
-          {"source": "aidev-glab",            "target": "/home/dev/.config/glab-cli",      "type": "volume"}, \
+          {"source": "aidev-gh-${devcontainerId}",   "target": "/home/dev/.config/gh",       "type": "volume"}, \
+          {"source": "aidev-glab-${devcontainerId}", "target": "/home/dev/.config/glab-cli", "type": "volume"}, \
           {"source": "aidev-gomodcache",      "target": "/home/dev/go/pkg/mod",            "type": "volume"}, \
           {"source": "aidev-cache",           "target": "/home/dev/.cache",                "type": "volume"}, \
           {"source": "aidev-history-${devcontainerId}", "target": "/home/dev/.commandhistory", "type": "volume"} \

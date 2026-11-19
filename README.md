@@ -42,16 +42,29 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
 указать `"image": "ghcr.io/tualua/aidev:latest"`, а всё остальное подтянется само:
 
 - `remoteUser`, `init`, обновление UID/GID под пользователя хоста;
-- **именованные тома, общие для всех проектов.** Авторизоваться в агентах нужно один раз:
+- **именованные тома**. Общие тома служат для агентов и кэшей (авторизоваться в AI-агентах нужно один раз).
+  Проектные тома хранят всё, что у проектов должно быть своим: токены git-хостингов, kubeconfig, историю:
 
   | Том | Путь в контейнере |
   |---|---|
   | `aidev-claude` | `~/.claude` (+ `CLAUDE_CONFIG_DIR`, `.claude.json` тоже там) |
   | `aidev-qwen` | `~/.qwen` |
   | `aidev-opencode-config`, `aidev-opencode-data` | `~/.config/opencode`, `~/.local/share/opencode` |
-  | `aidev-gh`, `aidev-glab` | `~/.config/gh`, `~/.config/glab-cli` |
   | `aidev-gomodcache`, `aidev-cache` | кэш Go-модулей, `~/.cache` (uv, go-build) |
-  | `aidev-history-<id>` | история zsh/bash, отдельная для каждого проекта |
+  | **Проектные** (`<id>` — `devcontainerId`, хэш пути проекта, стабилен между пересборками) | |
+  | `aidev-gh-<id>`, `aidev-glab-<id>` | `~/.config/gh`, `~/.config/glab-cli`: свой токен в каждом проекте |
+  | `aidev-kube-<id>` (feature `kubernetes`) | `~/.kube`: свой kubeconfig и **текущий контекст** |
+  | `aidev-history-<id>` | история zsh/bash |
+
+  Тома проекта можно найти так: `docker inspect <контейнер> --format '{{range .Mounts}}{{.Name}} {{end}}'`.
+  Если удалить каталог проекта, его тома останутся. Чистка: `docker volume ls -q -f dangling=true | grep '^aidev-'`.
+
+  **Имена каталогов проектов должны быть уникальными.** Проект монтируется в `/workspaces/<имя каталога>`,
+  а Claude Code хранит историю сессий, память проекта и доверие к каталогу по этому пути. Каталоги
+  `~/a/api` и `~/b/api` будут делить всё это между собой.
+
+  Вместо `gh auth login` в каждом проекте можно передать токен с хоста:
+  `"containerEnv": {"GH_TOKEN": "${localEnv:GH_TOKEN_MYPROJ}"}` (для glab: `GITLAB_TOKEN`).
 
 - **Плагины Claude Code** ставит `aidev-claude-plugins` при создании контейнера (`postCreateCommand`)
   в общий том `~/.claude`. Он идемпотентен и при отсутствии сети не роняет создание контейнера.
@@ -83,7 +96,7 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
 |---|---|---|
 | `terraform` | terraform, tflint | `version`, `tflint`, `opentofu` |
 | `govc` | govc (vmware/govmomi) | `version` |
-| `kubernetes` | kubectl, helm, k9s, kubectx/kubens, stern; том `aidev-kube` → `~/.kube` | `kubectl`, `helm`, `k9s`, `kubectx`, `stern` |
+| `kubernetes` | kubectl, helm, k9s, kubectx/kubens, stern; проектный том `aidev-kube-<id>` → `~/.kube` | `kubectl`, `helm`, `k9s`, `kubectx`, `stern` |
 | `intel-gpu` | OpenCL, Level Zero, VA-API (iHD), clinfo, intel_gpu_top | `compute`, `media`, `devel`, `tools` |
 | `usb-debug` | openocd, gdb-multiarch, stlink, dfu-util, picocom/tio/minicom | `probeRs`, `pyocd`, `esptool` |
 

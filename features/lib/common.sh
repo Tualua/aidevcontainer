@@ -6,6 +6,13 @@ set -euo pipefail
 ARCH="$(dpkg --print-architecture)"             # amd64 | arm64
 REMOTE_USER="${_REMOTE_USER:-dev}"
 
+# Все curl в install.sh — с защитой от нестабильной сети: таймаут подключения, обрыв «застрявшей»
+# загрузки (< 1 KB/s в течение 60 s) и повторы при любых ошибках (включая HTTP/2 PROTOCOL_ERROR).
+curl() {
+    command curl --connect-timeout 20 --speed-limit 1024 --speed-time 60 \
+        --retry 5 --retry-all-errors --retry-delay 3 "$@"
+}
+
 apt_install() {
     export DEBIAN_FRONTEND=noninteractive
     if [ -z "$(find /var/lib/apt/lists -maxdepth 1 -type f -name '*Packages*' -print -quit 2>/dev/null)" ]; then
@@ -23,7 +30,7 @@ gh_latest_tag() {
 
 # fetch URL DEST [SHA256]
 fetch() {
-    curl -fsSL --retry 3 "$1" -o "$2"
+    curl -fsSL "$1" -o "$2"
     if [ -n "${3:-}" ]; then echo "$3  $2" | sha256sum -c - >/dev/null; fi
 }
 

@@ -13,6 +13,10 @@ claude="$(command -v claude || echo "$HOME/.local/bin/claude")"
 [ -x "$claude" ] || { echo "aidev-claude-plugins: claude not found, skip"; exit 0; }
 
 # run DESCRIPTION CMD... — с одной повторной попыткой; полный вывод только при ошибке
+# Несколько контейнеров могут создаваться одновременно и писать в общий том ~/.claude
+exec 9>"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.aidev-plugins.lock"
+flock -w 600 9 || echo "aidev-claude-plugins: WARN lock timeout, continuing"
+
 rc=0
 run() {
     local what="$1" out; shift

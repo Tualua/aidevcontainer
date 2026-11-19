@@ -53,21 +53,25 @@ Claude Code: в `/etc/claude-code/managed-settings.d/50-aidev.json` разреш
 в проекте или производном образе без просьбы оператора: это корпоративный уровень, и испорченный файл
 не даёт Claude Code запуститься.
 
-Общие тома (одни на все проекты оператора, авторизация делается один раз):
+Тома. **Общие** (одни на все проекты оператора) хранят авторизацию AI-агентов и кэши. **Проектные**
+(`<id>` = `${devcontainerId}`) хранят то, что у проектов своё: токены git-хостингов, kubeconfig, историю.
 
 | Том | Путь |
 |---|---|
 | `aidev-claude` | `~/.claude` (`CLAUDE_CONFIG_DIR`) |
 | `aidev-qwen` | `~/.qwen` |
 | `aidev-opencode-config`, `aidev-opencode-data` | `~/.config/opencode`, `~/.local/share/opencode` |
-| `aidev-gh`, `aidev-glab` | `~/.config/gh`, `~/.config/glab-cli` |
 | `aidev-gomodcache` | `~/go/pkg/mod` |
 | `aidev-cache` | `~/.cache` (uv, go-build и т.п.) |
-| `aidev-history-${devcontainerId}` | `~/.commandhistory` (отдельный для каждого проекта) |
-| `aidev-kube` (feature `kubernetes`) | `~/.kube` |
+| *проектные:* | |
+| `aidev-gh-${devcontainerId}`, `aidev-glab-${devcontainerId}` | `~/.config/gh`, `~/.config/glab-cli` |
+| `aidev-kube-${devcontainerId}` (feature `kubernetes`) | `~/.kube` (свой контекст kubectl) |
+| `aidev-history-${devcontainerId}` | `~/.commandhistory` |
 
 Git: GitHub **только по HTTPS** (`git@github.com:` переписывается автоматически), авторизация
-через `gh auth login`. Для gitlab.com аналогично через `glab auth login`, SSH к gitlab.com тоже работает.
+через `gh auth login`, выполняемый **в каждом проекте** (токены у проектов разные). Альтернатива без логина:
+`"containerEnv": {"GH_TOKEN": "${localEnv:<ПЕРЕМЕННАЯ>}"}`, для GitLab `GITLAB_TOKEN`. Для gitlab.com аналогично
+через `glab auth login`, SSH к gitlab.com тоже работает.
 
 ## 3. Процедура
 
@@ -208,7 +212,12 @@ Serial-порт, появившийся после старта: `sudo aidev-ser
 - Новый том на путь, **которого нет в образе**, создаётся с владельцем root, и `dev` не сможет в него писать.
   Либо создайте каталог в производном Dockerfile (`install -d -o dev -g dev /home/dev/.foo`), либо
   добавьте `"postCreateCommand": "sudo chown dev:dev /home/dev/.foo"`.
-- Проектные тома называйте с префиксом проекта, а не `aidev-*`: префикс `aidev-` означает общий для всех проектов.
+- Новый том для **секретов или состояния, специфичных для проекта**, делайте проектным: `"source": "<имя>-${devcontainerId}"`.
+  Не используйте в имени тома `${localWorkspaceFolderBasename}`: каталог с пробелом или кириллицей даст
+  недопустимое имя тома, и контейнер не запустится. Общий для всех проектов том (`aidev-*`) годится только для кэшей
+  и данных без привязки к проекту.
+- Проект монтируется в `/workspaces/<имя каталога>`, а Claude Code хранит историю и память по пути. Если у
+  оператора уже есть проект с таким же именем каталога, предупредите его.
 - Не монтируйте `~/.ssh`, `~/.config/gh` и прочие каталоги с секретами хоста целиком без явной просьбы оператора.
 
 ### 5.3. Окружение и настройки
@@ -362,8 +371,8 @@ USER dev
 2. **Что сделать на хосте**: переменные окружения (`GOVC_*`…), файлы для bind-mount, udev-правила,
    группы, `docker pull ghcr.io/tualua/aidev:latest`.
 3. **Первый запуск**: «Reopen in Container» в VS Code или `devcontainer up --workspace-folder .`.
-   Однократно, если ещё не делалось: `claude` (логин), `gh auth login`, `glab auth login`,
-   а также логин в `opencode` и `qwen`. Авторизация общая для всех проектов.
+   Однократно на все проекты, если ещё не делалось: логин в `claude`, `opencode`, `qwen` (общие тома).
+   **В этом проекте:** `gh auth login` / `glab auth login` (или токены через `containerEnv`), kubeconfig в `~/.kube`.
 4. **Результат проверки**: что запускалось и прошло; что **не** проверено и почему.
 5. **Предложения в aidevcontainer**, если что-то стоит вынести в базу или feature.
 

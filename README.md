@@ -15,7 +15,7 @@
 
 Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля).
 
-- **AI-агенты:** Claude Code (нативный установщик, канал `latest`), opencode, qwen-code
+- **AI-агенты:** Claude Code (нативный установщик, канал `latest`), OpenCode 2 (бинарник из релиза, самообновление выключено, обновляется с образом), qwen-code
 - **Go:** последняя версия, `GOTOOLCHAIN=auto`, gopls, dlv, goimports, gofumpt, golangci-lint
 - **Python:** uv/uvx (интерпретаторы ставятся через uv), ruff, pre-commit, pyright
 - **Ansible:** ansible-core и ansible-lint (через `uv tool`)

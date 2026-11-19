@@ -17,6 +17,7 @@ ARG USER_GID=1000
 ARG GO_VERSION=latest
 ARG NODE_MAJOR=26
 ARG CLAUDE_CODE_VERSION=latest
+# OpenCode 2.x: "latest" или конкретная версия (2.3.2)
 ARG OPENCODE_VERSION=latest
 ARG QWEN_CODE_VERSION=latest
 
@@ -169,12 +170,24 @@ RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_IN
     && uv tool install ast-grep-cli \
     && rm -rf /tmp/uv-cache
 
-# LSP для JS/TS/Python + opencode, qwen-code → /usr/local
+# LSP для JS/TS/Python + qwen-code → /usr/local
 RUN npm install -g --prefix /usr/local --no-fund --no-audit \
         typescript typescript-language-server pyright \
-        "opencode-ai@${OPENCODE_VERSION}" \
         "@qwen-code/qwen-code@${QWEN_CODE_VERSION}" \
     && npm cache clean --force && rm -rf /root/.npm
+
+# OpenCode 2 — официальный бинарник из GitHub-релиза. npm-пакет @opencode/cli ставит сразу все
+# Linux-варианты (~1 GB), установщик opencode.ai/v2/install — в ~/.opencode и правит rc-файлы.
+# Последняя 2.x — из npm-метаданных (GitHub "latest" может указывать на релиз ветки 1.x).
+RUN case "$(dpkg --print-architecture)" in amd64) t=x64;; arm64) t=arm64;; esac \
+    && v="${OPENCODE_VERSION}" \
+    && if [ "$v" = latest ]; then v="$(npm view @opencode/cli version)"; fi \
+    && rel="$(curl -fsSL "https://api.github.com/repos/anomalyco/opencode/releases/tags/v${v#v}")" \
+    && asset="$(jq -c --arg n "opencode-linux-${t}.tar.gz" '.assets[] | select(.name == $n)' <<<"$rel")" \
+    && curl -fsSL "$(jq -r .browser_download_url <<<"$asset")" -o /tmp/opencode.tgz \
+    && echo "$(jq -r '.digest | sub("^sha256:"; "")' <<<"$asset")  /tmp/opencode.tgz" | sha256sum -c - \
+    && tar -C /usr/local/bin -xzf /tmp/opencode.tgz opencode && rm /tmp/opencode.tgz \
+    && opencode --version
 
 # zoxide — бинарник из релиза (apt-get update в позднем слое стоит минуты из-за зеркала).
 # Своих sha256 у проекта нет — берём digest файла из GitHub API.
@@ -190,9 +203,11 @@ RUN case "$(dpkg --print-architecture)" in amd64) t=x86_64;; arm64) t=aarch64;; 
 COPY image/rootfs/ /
 COPY docs/agent-guide.md /usr/share/doc/aidev/agent-guide.md
 
+# OpenCode обновляется пересборкой образа (бинарник root-owned), самообновление выключено.
 # Единственный общий для всех проектов том — кэши пакетов (aidev-pkgcache): Go-модули, uv, npm.
 # Всё остальное (агенты, токены, ~/.cache с go-build/gopls) — проектные тома.
-ENV GOMODCACHE=/home/${USERNAME}/.pkgcache/gomod \
+ENV OPENCODE_DISABLE_AUTOUPDATE=1 \
+    GOMODCACHE=/home/${USERNAME}/.pkgcache/gomod \
     UV_CACHE_DIR=/home/${USERNAME}/.pkgcache/uv \
     NPM_CONFIG_CACHE=/home/${USERNAME}/.pkgcache/npm
 

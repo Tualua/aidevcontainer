@@ -93,6 +93,7 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 | `package.json` | Node | ничего (база); `npm ci`. pnpm/yarn: `npm i -g pnpm` в `postCreateCommand` или Dockerfile |
 | OpenCL / Level Zero / VA-API / oneAPI, `/dev/dri` в документации | Intel GPU | feature `intel-gpu` + проброс устройства (§4) |
 | `platformio.ini`, `*.cfg` для openocd, `.cargo/config.toml` с `probe-rs`, `Embed.toml`, ESP-IDF | USB-отладка | feature `usb-debug` + проброс (§4) |
+| драйвер БД в зависимостях (`go.mongodb.org/mongo-driver`, `pgx`, `go-redis`, `pymongo`, `psycopg`…), `docker-compose.yml` для разработки, testcontainers в тестах | сервисы рядом | шаблон `compose-db`, §4a |
 | `.envrc` | direnv | ничего: хук уже подключён, оператор делает `direnv allow` |
 | `.tool-versions`, `mise.toml` | менеджер версий | mise/asdf **нет** в базе. Используйте механизмы базы (Go toolchain, uv python); если не хватает, спросите оператора |
 
@@ -113,8 +114,8 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 
 ### 3.3. Начать с шаблона
 
-Шаблоны: `templates/{base,gpu,usb,infra}/.devcontainer/devcontainer.json` в репозитории
-aidevcontainer. Возьмите ближайший, удалите лишнее, комментарии оставьте только полезные проекту.
+Шаблоны: `templates/{base,gpu,usb,infra,compose-db}/.devcontainer/` в репозитории
+aidevcontainer (`compose-db`: контейнер разработки + Percona MongoDB через Docker Compose, §4a). Возьмите ближайший, удалите лишнее, комментарии оставьте только полезные проекту.
 
 ### 3.4. Зависимости проекта
 
@@ -189,6 +190,58 @@ Serial-порт, появившийся после старта: `sudo aidev-ser
 "updateRemoteUserUID": false
 ```
 `--device-cgroup-rule` в rootless не действует: доступ к USB определяется правами на хосте.
+
+## 4a. Сервисы рядом (БД, брокеры, кэши): Docker Compose
+
+Когда проекту нужна база данных или другой сервис, devcontainer переводится в compose-режим:
+`devcontainer.json` ссылается на `compose.yaml`, в котором сервис `dev` использует базовый образ, а рядом
+работают нужные сервисы. Начинайте с шаблона `templates/compose-db` (Percona MongoDB) и меняйте сервис БД.
+
+**Что меняется по сравнению с обычным режимом:**
+
+| | Обычный режим | Compose |
+|---|---|---|
+| Образ | `"image"` в devcontainer.json | `image:` у сервиса `dev` в compose.yaml, `"service": "dev"` |
+| Монтирование проекта | автоматически | **явно**: `volumes: [..:/workspace:cached]` + `"workspaceFolder": "/workspace"` |
+| Устройства | `runArgs` | **`runArgs` игнорируются**: `devices:`, `device_cgroup_rules:`, `volumes:` у сервиса `dev` |
+| Метаданные образа, features, lifecycle, `containerEnv`, `mounts` | работают | работают так же (проверено) |
+| Имена томов | как в метаданных | compose добавляет префикс `<проект>_devcontainer_`. Общий `aidev-pkgcache` закреплён в compose.yaml через `name:`, его не удаляйте |
+
+**Правила:**
+- Сервисы доступны из `dev` по имени сервиса (`mongo:27017`). Адрес передавайте переменной окружения
+  (`MONGODB_URI`, `DATABASE_URL`, …) в `environment:` сервиса `dev`, а не зашивайте в код.
+- `depends_on` с `condition: service_healthy` плюс `healthcheck` у сервиса: контейнер разработки стартует,
+  когда БД уже готова, и тесты не падают на первом запуске.
+- Порты наружу не публикуйте. Если оператору нужен GUI-клиент на хосте, публикуйте только на `127.0.0.1`.
+- Данные БД храните в именованном томе compose-проекта. Сброс с хоста:
+  `docker compose -p <каталог>_devcontainer down -v`.
+- Учётные данные БД по умолчанию держите только для локального использования. Переопределение через
+  `.devcontainer/.env` (добавьте в `.gitignore`), значения в compose.yaml подставляйте как `${VAR:-default}`.
+- Клиенты БД (mongosh, psql, redis-cli) ставьте в `postCreateCommand`. **Не через `npm i -g`, если пакету нужны
+  install-скрипты**: npm 11 их не запускает, и, например, mongosh ставится неработоспособным. Берите
+  релизный бинарник (пример: `install-mongosh.sh` в шаблоне) или apt-пакет в производном Dockerfile.
+- `"shutdownAction": "stopCompose"`: закрытие окна останавливает и сервисы.
+
+**Особенности MongoDB** (учтены в шаблоне):
+- Транзакции и change streams работают только в replica set, поэтому даже один узел запускается как
+  `--replSet rs0`. Инициализирует его healthcheck (`rs.initiate`) с хостом участника `mongo:27017`.
+  С `localhost` драйвер из контейнера `dev` не найдёт PRIMARY.
+- Replica set с авторизацией требует `keyFile` даже для одного узла. Шаблон генерирует его при старте.
+
+**PostgreSQL** (замена сервиса `mongo`, replica set и keyFile не нужны):
+```yaml
+  db:
+    image: postgres:17
+    environment: { POSTGRES_PASSWORD: postgres }
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 5s, retries: 30 }
+```
+и в `dev`: `DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?sslmode=disable`.
+
+**testcontainers** (тесты сами поднимают БД) требуют доступа к Docker изнутри контейнера. В базе его нет
+намеренно: доступ к сокету Docker хоста равен root на хосте. Если проект построен на testcontainers,
+сообщите оператору и предложите compose-сервис для разработки. Включать доступ к Docker можно только по
+его явному решению.
 
 ## 5. Инварианты: нарушать нельзя
 

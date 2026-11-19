@@ -1,0 +1,18 @@
+// Проект с вспомогательными сервисами (БД и т.п.) через Docker Compose.
+// Сервисы описаны в compose.yaml; здесь — только то, что касается контейнера разработки.
+//
+// Учётные данные БД по умолчанию root:root — только для локальной базы. Переопределить:
+// файл .devcontainer/.env (добавьте в .gitignore) с MONGO_USER / MONGO_PASSWORD / MONGO_VERSION.
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "dockerComposeFile": "compose.yaml",
+    "service": "dev",
+    "workspaceFolder": "/workspace",
+    // Остановить все сервисы при закрытии окна VS Code
+    "shutdownAction": "stopCompose",
+
+    // Features и lifecycle — как в обычном devcontainer:
+    // "features": { "ghcr.io/tualua/aidevcontainer/kubernetes:1": {} },
+    "postCreateCommand": ".devcontainer/install-mongosh.sh"
+    // "postCreateCommand": { "mongosh": ".devcontainer/install-mongosh.sh", "go": "go mod download" }
+}

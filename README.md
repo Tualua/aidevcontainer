@@ -112,7 +112,9 @@ Features рассчитаны на этот базовый образ (Ubuntu, �
 
 ## Использование в проекте
 
-Скопируйте подходящий шаблон из `templates/` в проект:
+Скопируйте подходящий шаблон из `templates/` в проект: `base`, `gpu`, `usb`, `infra` или `compose-db`
+(контейнер разработки плюс Percona MongoDB через Docker Compose; подробности в
+[руководстве, §4a](docs/agent-guide.md#4a-сервисы-рядом-бд-брокеры-кэши-docker-compose)):
 
 ```jsonc
 {

@@ -1,0 +1,61 @@
+# Окружение со вспомогательными сервисами (здесь — Percona Server for MongoDB).
+# Сервис dev — базовый образ aidev: все его метаданные (пользователь, проектные тома агентов,
+# плагины, настройки Claude) применяются как обычно.
+#
+# Подключение из кода: mongodb://root:root@mongo:27017/?replicaSet=rs0  (переменная MONGODB_URI)
+# Сброс данных базы:   docker compose -p <проект>_devcontainer down -v   (с хоста)
+
+services:
+  dev:
+    image: ghcr.io/tualua/aidev:latest
+    command: sleep infinity
+    volumes:
+      # В compose-режиме проект монтируется явно. Путь должен совпадать с workspaceFolder в devcontainer.json.
+      - ..:/workspace:cached
+    environment:
+      MONGODB_URI: mongodb://${MONGO_USER:-root}:${MONGO_PASSWORD:-root}@mongo:27017/?replicaSet=rs0
+    depends_on:
+      mongo:
+        condition: service_healthy
+    # Устройства (runArgs в compose-режиме не работают) — здесь:
+    # devices: ["/dev/dri:/dev/dri"]
+    # device_cgroup_rules: ["c 189:* rmw", "c 166:* rmw", "c 188:* rmw"]
+
+  mongo:
+    image: percona/percona-server-mongodb:${MONGO_VERSION:-8.0}
+    # Single-node replica set: без него не работают транзакции и change streams.
+    # Replica set с авторизацией требует keyFile (даже из одного узла) — генерируем при старте.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        openssl rand -base64 756 > /tmp/mongo.key && chmod 400 /tmp/mongo.key
+        exec /entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /tmp/mongo.key
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-root}
+    volumes:
+      - mongo-data:/data/db
+    # Порт наружу не публикуется: база доступна только из сети devcontainer.
+    # Для GUI-клиента на хосте (Compass и т.п.): ports: ["127.0.0.1:27017:27017"]
+    healthcheck:
+      # Инициализирует replica set при первом запуске и ждёт, пока узел станет PRIMARY.
+      # Хост участника — mongo:27017, чтобы драйвер из контейнера dev мог к нему подключиться.
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD"
+          --eval "try { rs.status() } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}) };
+          quit(db.hello().isWritablePrimary ? 0 : 1)"
+      interval: 5s
+      timeout: 10s
+      start_period: 20s
+      retries: 30
+
+volumes:
+  mongo-data:
+  # Тома из метаданных образа compose иначе назвал бы с префиксом проекта (<проект>_devcontainer_...),
+  # и общий кэш пакетов перестал бы быть общим с остальными проектами. Проектные тома агентов
+  # (aidev-claude-<id> и т.п.) получают префикс — это не мешает, они и так свои у каждого проекта.
+  aidev-pkgcache:
+    name: aidev-pkgcache

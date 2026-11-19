@@ -1,0 +1,10 @@
+# Версии GitHub Actions и базового образа ubuntu в Dockerfile.
+# Сами инструменты (AI CLI, Go, Node, uv-утилиты) берутся "latest" при еженедельной сборке.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /image
+    schedule: { interval: weekly }

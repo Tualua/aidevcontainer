@@ -15,7 +15,7 @@ ARG USER_GID=1000
 # "latest" или конкретная версия: 1.27.4 / 26 / 2.1.30 и т.п.
 ARG GO_VERSION=latest
 ARG NODE_MAJOR=26
-ARG CLAUDE_CODE_VERSION=stable
+ARG CLAUDE_CODE_VERSION=latest
 ARG OPENCODE_VERSION=latest
 ARG QWEN_CODE_VERSION=latest
 
@@ -61,6 +61,11 @@ RUN arch="$(dpkg --print-architecture)" \
     && (cd /tmp && curl -fsSL "$base/checksums.txt" | grep " $f\$" | sha256sum -c -) \
     && apt-get install -y --no-install-recommends "/tmp/$f" && rm -f "/tmp/$f" \
     && rm -rf /var/lib/apt/lists/*
+
+# SSH known_hosts для GitHub (ключи из API по HTTPS) и GitLab
+RUN curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > /etc/ssh/ssh_known_hosts \
+    && ssh-keyscan -t ed25519,rsa,ecdsa gitlab.com 2>/dev/null >> /etc/ssh/ssh_known_hosts \
+    && grep -q '^gitlab.com ' /etc/ssh/ssh_known_hosts
 
 # yq (mikefarah, Go-версия; в Ubuntu пакет yq — это другой, python-обёртка над jq)
 RUN arch="$(dpkg --print-architecture)" \
@@ -121,7 +126,41 @@ ENV GOPATH=/home/${USERNAME}/go \
     EDITOR=vi \
     SHELL=/usr/bin/zsh \
     STARSHIP_CONFIG=/etc/aidev/starship.toml \
+    AIDEV_CLAUDE_MARKETPLACES="https://github.com/open-gsd/gsd-core.git" \
+    AIDEV_CLAUDE_PLUGINS="gsd-core@gsd-core" \
     PATH=/home/${USERNAME}/.local/bin:/home/${USERNAME}/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# ВАЖНО: тяжёлые инструменты ставим ВНЕ $HOME (root-owned, обновляются пересборкой образа).
+# Если UID/GID пользователя хоста не 1000, devcontainer CLI делает `chown -R $HOME`,
+# и каждый файл в $HOME копируется в новый слой — гигабайты и минуты на каждом старте.
+
+# oh-my-zsh
+RUN git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git /usr/share/oh-my-zsh \
+    && rm -rf /usr/share/oh-my-zsh/.git
+
+# Go-инструменты → /usr/local/bin
+RUN export GOBIN=/usr/local/bin GOPATH=/tmp/gopath GOCACHE=/tmp/gocache \
+    && go install golang.org/x/tools/gopls@latest \
+    && go install golang.org/x/tools/cmd/goimports@latest \
+    && go install github.com/go-delve/delve/cmd/dlv@latest \
+    && go install mvdan.cc/gofumpt@latest \
+    && rm -rf /tmp/gopath /tmp/gocache
+
+# Python / Ansible инструменты (изолированные окружения uv tool) → /opt/uv-tools, бинарники в /usr/local/bin
+RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+        UV_CACHE_DIR=/tmp/uv-cache \
+    && uv tool install ruff \
+    && uv tool install pre-commit \
+    && uv tool install ansible-core \
+    && uv tool install ansible-lint \
+    && rm -rf /tmp/uv-cache
+
+# LSP для JS/TS/Python + opencode, qwen-code → /usr/local
+RUN npm install -g --prefix /usr/local --no-fund --no-audit \
+        typescript typescript-language-server pyright \
+        "opencode-ai@${OPENCODE_VERSION}" \
+        "@qwen-code/qwen-code@${QWEN_CODE_VERSION}" \
+    && npm cache clean --force && rm -rf /root/.npm
 
 # Каталоги, на которые монтируются тома (см. LABEL ниже) — создаём заранее,
 # чтобы новый том получил правильного владельца.
@@ -130,42 +169,19 @@ RUN h="/home/${USERNAME}" \
         "$h/.claude" "$h/.qwen" "$h/.config" "$h/.config/opencode" "$h/.config/gh" "$h/.config/glab-cli" \
         "$h/.local" "$h/.local/bin" "$h/.local/share" "$h/.local/share/opencode" \
         "$h/.cache" "$h/.commandhistory" "$h/go" "$h/go/pkg" "$h/go/pkg/mod" \
-    && echo '[ -f /etc/aidev/bashrc ] && . /etc/aidev/bashrc' >> "$h/.bashrc"
+    && echo '[ -f /etc/aidev/bashrc ] && . /etc/aidev/bashrc' >> "$h/.bashrc" \
+    && printf '%s\n' \
+        '# Общая конфигурация aidev (oh-my-zsh, плагины, история): /etc/aidev/zshrc' \
+        '# Переменные ZSH_THEME / AIDEV_OMZ_PLUGINS можно задать ДО source.' \
+        'source /etc/aidev/zshrc' > "$h/.zshrc" \
+    && chown "${USERNAME}:${USERNAME}" "$h/.zshrc"
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
-# oh-my-zsh (обновляется вместе с образом, а не сам по себе)
-RUN git clone --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh" \
-    && rm -rf "$HOME/.oh-my-zsh/.git" \
-    && printf '%s\n' \
-        '# Общая конфигурация aidev (oh-my-zsh, плагины, история): /etc/aidev/zshrc' \
-        '# Переменные ZSH_THEME / AIDEV_OMZ_PLUGINS можно задать ДО source.' \
-        'source /etc/aidev/zshrc' \
-        > "$HOME/.zshrc"
-
-# Go-инструменты
-RUN go install golang.org/x/tools/gopls@latest \
-    && go install golang.org/x/tools/cmd/goimports@latest \
-    && go install github.com/go-delve/delve/cmd/dlv@latest \
-    && go install mvdan.cc/gofumpt@latest \
-    && go clean -cache
-
-# Python / Ansible инструменты (изолированные окружения uv tool)
-RUN uv tool install ruff \
-    && uv tool install pre-commit \
-    && uv tool install ansible-core \
-    && uv tool install ansible-lint \
-    && uv cache clean
-
-# LSP для JS/TS/Python (полезны и для AI-агентов) + AI CLI
-RUN npm install -g --no-fund --no-audit \
-        typescript typescript-language-server pyright \
-        "opencode-ai@${OPENCODE_VERSION}" \
-        "@qwen-code/qwen-code@${QWEN_CODE_VERSION}" \
-    && curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
-    && npm cache clean --force \
-    && rm -rf "$HOME/.cache/"* "$HOME/.npm"
+# Claude Code — нативный установщик (~/.local; сам обновляется, несколько крупных файлов)
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
+    && rm -rf "$HOME/.cache/"*
 
 # Метаданные devcontainer: подхватываются автоматически любым проектом,
 # использующим образ. В devcontainer.json проекта их можно дополнить/переопределить.
@@ -176,6 +192,7 @@ LABEL org.opencontainers.image.title="aidev" \
         "containerUser": "dev", \
         "updateRemoteUserUID": true, \
         "init": true, \
+        "postCreateCommand": "/usr/local/bin/aidev-claude-plugins", \
         "mounts": [ \
           {"source": "aidev-claude",          "target": "/home/dev/.claude",               "type": "volume"}, \
           {"source": "aidev-qwen",            "target": "/home/dev/.qwen",                 "type": "volume"}, \

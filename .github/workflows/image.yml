@@ -40,5 +40,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # По расписанию/вручную — без кэша, иначе "latest" (AI CLI, Go, Node) не обновятся
+          no-cache: ${{ github.event_name != 'push' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,7 +1,8 @@
 # Подключается из ~/.zshrc пользователя (см. Dockerfile).
 # Своё — в ~/.zshrc.d/*.zsh (или /etc/aidev/zshrc.d/*.zsh для производных образов).
 
-export ZSH="$HOME/.oh-my-zsh"
+export ZSH=/usr/share/oh-my-zsh
+ZSH_CACHE_DIR="$HOME/.cache/oh-my-zsh"; mkdir -p "$ZSH_CACHE_DIR/completions"
 # Промпт: starship (по умолчанию) или тема oh-my-zsh при AIDEV_PROMPT=omz
 if [[ "${AIDEV_PROMPT:-starship}" == starship ]] && (( $+commands[starship] )); then
     ZSH_THEME=""

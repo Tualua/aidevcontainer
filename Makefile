@@ -6,10 +6,13 @@ TAG       ?= latest
 FEATURES  := $(notdir $(wildcard features/src/*))
 BUILD_ARGS ?=
 
-.PHONY: image push features-sync features-test features-publish lint clean
+.PHONY: image image-fresh push features-sync features-test features-publish lint clean
 
 image:  ## Собрать базовый образ (+ локальный тег aidev:dev)
 	$(ENGINE) build $(BUILD_ARGS) -t $(IMAGE):$(TAG) -t aidev:dev image/
+
+image-fresh:  ## Без кэша: подтянуть последние AI CLI, Go, Node, плагины и т.п.
+	$(MAKE) image BUILD_ARGS="$(BUILD_ARGS) --no-cache --pull"
 
 push: image
 	$(ENGINE) push $(IMAGE):$(TAG)

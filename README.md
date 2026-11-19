@@ -12,7 +12,7 @@
 
 Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля).
 
-- **AI-агенты:** Claude Code (нативный установщик), opencode, qwen-code
+- **AI-агенты:** Claude Code (нативный установщик, канал `latest`), opencode, qwen-code
 - **Go:** последняя версия, `GOTOOLCHAIN=auto`, gopls, dlv, goimports, gofumpt, golangci-lint
 - **Python:** uv/uvx (интерпретаторы ставятся через uv), ruff, pre-commit, pyright
 - **Ansible:** ansible-core и ansible-lint (через `uv tool`)
@@ -46,6 +46,14 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
   | `aidev-gomodcache`, `aidev-cache` | кэш Go-модулей, `~/.cache` (uv, go-build) |
   | `aidev-history-<id>` | история zsh/bash, отдельная для каждого проекта |
 
+- **Плагины Claude Code** ставит `aidev-claude-plugins` при создании контейнера (`postCreateCommand`)
+  в общий том `~/.claude`. Он идемпотентен и при отсутствии сети не роняет создание контейнера.
+  По умолчанию ставится `gsd-core@gsd-core` из маркетплейса
+  [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core). Список задают переменные
+  `AIDEV_CLAUDE_MARKETPLACES` и `AIDEV_CLAUDE_PLUGINS` в `containerEnv` проекта (значение
+  заменяет список целиком). Обновить плагины: `aidev-claude-plugins --update`.
+  Если `postCreateCommand` задан и в проекте, выполнятся обе команды;
+- В `/etc/ssh/ssh_known_hosts` прописаны ключи github.com и gitlab.com;
 - **venv не активируется автоматически** (`python.terminal.activateEnvironment: false`,
   `python-envs.terminal.autoActivationType: off`): при reload окна в терминалы ничего не
   отправляется. Используйте `uv run ...` или активируйте `source .venv/bin/activate` вручную;
@@ -120,6 +128,7 @@ features запускают `aidev-device-groups`: он создаёт груп�
 
 ```bash
 make image                    # docker build → ghcr.io/tualua/aidev:latest и aidev:dev
+make image-fresh              # без кэша: свежие Claude Code/opencode/qwen, Go, Node, uv-инструменты
 make image ENGINE=podman
 make image BUILD_ARGS="--build-arg GO_VERSION=1.26.3 --build-arg CLAUDE_CODE_VERSION=latest"
 make features-test            # devcontainer CLI: features поверх aidev:dev
@@ -129,11 +138,30 @@ make push features-publish REGISTRY=registry.example.com/team
 
 GitHub Actions (`.github/workflows/`):
 
-- **image.yml** собирает образ под amd64 и arm64 при изменениях и **раз в неделю**, чтобы
-  обновлялись AI CLI, Go, Node и патчи. Теги: `latest`, `YYYYMMDD`, `sha-xxxx`.
+- **image.yml** собирает образ под amd64 и arm64 при изменениях и **раз в неделю**.
+  Плановая и ручная сборки идут без кэша, чтобы обновлялись AI CLI, Go, Node и патчи. Теги: `latest`, `YYYYMMDD`, `sha-xxxx`.
 - **features.yml** публикует features в `ghcr.io/<owner>/aidevcontainer/<id>`.
 
 Чтобы получить воспроизводимую сборку, закрепите тег образа `:YYYYMMDD` и мажорную версию feature `:1`.
+
+## Обновление
+
+| Что | Как обновляется |
+|---|---|
+| Образ (AI CLI, Go, Node, uv-инструменты, gh/glab, oh-my-zsh, пакеты Ubuntu) | CI раз в неделю собирает образ без кэша и публикует `latest` и `YYYYMMDD`. На хосте нужно сделать `docker pull` и затем **Rebuild Container** |
+| Claude Code внутри работающего контейнера | Обновляется сам (нативный установщик в `~/.local`). После пересоздания контейнера берётся версия из образа |
+| Плагины Claude Code | `aidev-claude-plugins --update` (хранятся в общем томе, обновляются для всех проектов сразу) |
+| Features (`:1`) | Мажорная версия закреплена. Minor/patch и `latest`-версии инструментов подтягиваются при Rebuild |
+| GitHub Actions, базовый `ubuntu` | Dependabot (`.github/dependabot.yml`) |
+
+Сам devcontainer **не скачивает** новый `latest`, пока локальный образ существует. Поэтому нужен
+`docker pull ghcr.io/tualua/aidev:latest` перед Rebuild (VS Code: *Rebuild Without Cache* делает pull сам).
+
+Тяжёлые инструменты ставятся вне `$HOME` (root-owned: `/usr/local`, `/opt/uv-tools`,
+`/usr/share/oh-my-zsh`) и обновляются только пересборкой образа. Это важно: если UID/GID на хосте
+не 1000, devcontainer CLI при старте делает `chown -R $HOME`, и большой `$HOME` превращал бы
+старт в минуты копирования. Свои инструменты пользователь ставит как обычно (`uv tool install`,
+`npm i -g`, `go install`), они попадают в `~/.local` и `~/go`.
 
 ## Безопасность
 

@@ -62,9 +62,10 @@ RUN arch="$(dpkg --print-architecture)" \
     && apt-get install -y --no-install-recommends "/tmp/$f" && rm -f "/tmp/$f" \
     && rm -rf /var/lib/apt/lists/*
 
-# SSH known_hosts для GitHub (ключи из API по HTTPS) и GitLab
-RUN curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > /etc/ssh/ssh_known_hosts \
-    && ssh-keyscan -t ed25519,rsa,ecdsa gitlab.com 2>/dev/null >> /etc/ssh/ssh_known_hosts \
+# SSH known_hosts для gitlab.com. github.com здесь намеренно нет: к GitHub всё идёт по HTTPS
+# (см. git config ниже), а наличие github.com в known_hosts заставляет Claude Code клонировать
+# плагины по SSH, что без ключа падает.
+RUN ssh-keyscan -t ed25519,rsa,ecdsa gitlab.com 2>/dev/null > /etc/ssh/ssh_known_hosts \
     && grep -q '^gitlab.com ' /etc/ssh/ssh_known_hosts
 
 # yq (mikefarah, Go-версия; в Ubuntu пакет yq — это другой, python-обёртка над jq)
@@ -113,7 +114,17 @@ RUN if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}" \
     && chmod 0440 "/etc/sudoers.d/${USERNAME}" \
     && git config --system safe.directory '*' \
-    && git config --system init.defaultBranch main
+    && git config --system init.defaultBranch main \
+    # GitHub — только HTTPS; авторизация токеном из `gh auth login` (том aidev-gh)
+    && git config --system url.https://github.com/.insteadOf git@github.com: \
+    && git config --system --add url.https://github.com/.insteadOf ssh://git@github.com/ \
+    && git config --system credential.https://github.com.helper '' \
+    && git config --system --add credential.https://github.com.helper '!gh auth git-credential' \
+    && git config --system credential.https://gist.github.com.helper '' \
+    && git config --system --add credential.https://gist.github.com.helper '!gh auth git-credential' \
+    # gitlab.com по HTTPS — токеном из `glab auth login` (том aidev-glab); SSH тоже работает
+    && git config --system credential.https://gitlab.com.helper '' \
+    && git config --system --add credential.https://gitlab.com.helper '!glab auth git-credential' 
 
 COPY rootfs/ /
 
@@ -126,7 +137,7 @@ ENV GOPATH=/home/${USERNAME}/go \
     EDITOR=vi \
     SHELL=/usr/bin/zsh \
     STARSHIP_CONFIG=/etc/aidev/starship.toml \
-    AIDEV_CLAUDE_MARKETPLACES="https://github.com/open-gsd/gsd-core.git" \
+    AIDEV_CLAUDE_MARKETPLACES="open-gsd/gsd-core" \
     AIDEV_CLAUDE_PLUGINS="gsd-core@gsd-core" \
     PATH=/home/${USERNAME}/.local/bin:/home/${USERNAME}/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

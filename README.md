@@ -53,7 +53,11 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
   `AIDEV_CLAUDE_MARKETPLACES` и `AIDEV_CLAUDE_PLUGINS` в `containerEnv` проекта (значение
   заменяет список целиком). Обновить плагины: `aidev-claude-plugins --update`.
   Если `postCreateCommand` задан и в проекте, выполнятся обе команды;
-- В `/etc/ssh/ssh_known_hosts` прописаны ключи github.com и gitlab.com;
+- **GitHub только по HTTPS.** `git@github.com:` автоматически переписывается в `https://github.com/`,
+  push авторизуется токеном из `gh auth login` (git credential helper). Для gitlab.com то же
+  через `glab auth login`; SSH к gitlab.com тоже работает (ключ сервера есть в `ssh_known_hosts`).
+  Для self-hosted GitLab выполните `glab auth login --hostname <host>` и
+  `git config --global credential.https://<host>.helper '!glab auth git-credential'`;
 - **venv не активируется автоматически** (`python.terminal.activateEnvironment: false`,
   `python-envs.terminal.autoActivationType: off`): при reload окна в терминалы ничего не
   отправляется. Используйте `uv run ...` или активируйте `source .venv/bin/activate` вручную;

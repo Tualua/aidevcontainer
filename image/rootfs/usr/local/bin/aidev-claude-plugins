@@ -9,13 +9,6 @@
 # Обновить установленное:  aidev-claude-plugins --update
 set -uo pipefail
 
-# Плагины/маркетплейсы с source "github" Claude клонирует по SSH, если github.com есть в
-# known_hosts (а он там есть) — без SSH-ключа это падает. Для этого скрипта все
-# GitHub-клоны идут по HTTPS; глобальный git config не трогаем.
-export GIT_CONFIG_COUNT=2 \
-    GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf   GIT_CONFIG_VALUE_0=git@github.com: \
-    GIT_CONFIG_KEY_1=url.https://github.com/.insteadOf   GIT_CONFIG_VALUE_1=ssh://git@github.com/
-
 claude="$(command -v claude || echo "$HOME/.local/bin/claude")"
 [ -x "$claude" ] || { echo "aidev-claude-plugins: claude not found, skip"; exit 0; }
 
@@ -38,7 +31,13 @@ mode=install
 [ "${1:-}" = --update ] && mode=update
 
 for src in ${AIDEV_CLAUDE_MARKETPLACES:-}; do
-    run "marketplace $src" "$claude" plugin marketplace add "$src"
+    out="$("$claude" plugin marketplace add "$src" </dev/null 2>&1)" || true
+    case "$out" in
+        *✔*) echo "aidev-claude-plugins: marketplace $src: ok" ;;
+        # уже добавлен с другим написанием источника (owner/repo vs URL) — это нормально
+        *"doesn't match its extraKnownMarketplaces"*) echo "aidev-claude-plugins: marketplace $src: already added (other source form)" ;;
+        *) run "marketplace $src" "$claude" plugin marketplace add "$src" ;;
+    esac
 done
 [ "$mode" = update ] && run "marketplace update" "$claude" plugin marketplace update
 

@@ -68,8 +68,10 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
   Если удалить каталог проекта, его тома останутся. Чистка: `docker volume ls -q -f dangling=true | grep '^aidev-'`.
   Если нужна изоляция и кэша пакетов (приватные зависимости), переопределите том в проекте:
   `"mounts": [{"source": "aidev-pkgcache-${devcontainerId}", "target": "/home/dev/.pkgcache", "type": "volume"}]`.
-- **Remote Control включён по умолчанию** (`remoteControlAtStartup` в `~/.claude/settings.json` нового проекта,
-  выключается через `/config`). Сессия называется по имени каталога проекта
+- **Настройки Claude по умолчанию** в `~/.claude/settings.json` нового проекта (пользовательский уровень, меняются как обычно):
+  - `"tui": "fullscreen"`: полноэкранный рендерер без мерцания с виртуализированной прокруткой. Вернуть
+    классический: `/tui default`. Claude сам отключает его после сбоев рендерера и в tmux control mode (`-CC`);
+  - `remoteControlAtStartup: true`: **Remote Control включён**, выключается через `/config`. Сессия называется по имени каталога проекта
   (`CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX`). Нужна подписка Pro/Max/Team/Enterprise и вход через `/login`.
 
 - **Плагины Claude Code** ставит `aidev-claude-plugins` при создании контейнера (`postCreateCommand`)

@@ -212,7 +212,8 @@ RUN for f in /etc/claude-code/managed-settings.d/*.json; do jq empty "$f" || exi
     && echo '[ -f /etc/aidev/bashrc ] && . /etc/aidev/bashrc' >> "$h/.bashrc" \
     # Пользовательские настройки Claude по умолчанию: попадают в каждый НОВЫЙ проектный том ~/.claude
     # (Docker копирует содержимое каталога образа в пустой том). Меняются через /config.
-    && printf '%s\n' '{' '  "remoteControlAtStartup": true' '}' > "$h/.claude/settings.json" \
+    && printf '%s\n' '{' '  "remoteControlAtStartup": true,' '  "tui": "fullscreen"' '}' > "$h/.claude/settings.json" \
+    && jq empty "$h/.claude/settings.json" \
     && chown "${USERNAME}:${USERNAME}" "$h/.claude/settings.json" \
     && printf '%s\n' \
         '# Общая конфигурация aidev (oh-my-zsh, плагины, история): /etc/aidev/zshrc' \

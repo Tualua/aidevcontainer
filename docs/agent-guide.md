@@ -57,7 +57,7 @@ Claude Code: в `/etc/claude-code/managed-settings.d/50-aidev.json` разреш
 
 | Том | Путь |
 |---|---|
-| `aidev-claude-${devcontainerId}` | `~/.claude` (`CLAUDE_CONFIG_DIR`); в новом томе `settings.json` с `remoteControlAtStartup: true` |
+| `aidev-claude-${devcontainerId}` | `~/.claude` (`CLAUDE_CONFIG_DIR`); в новом томе `settings.json` с `remoteControlAtStartup: true` и `tui: fullscreen` |
 | `aidev-qwen-${devcontainerId}` | `~/.qwen` |
 | `aidev-opencode-config-${devcontainerId}`, `aidev-opencode-data-${devcontainerId}` | `~/.config/opencode`, `~/.local/share/opencode` |
 | `aidev-gh-${devcontainerId}`, `aidev-glab-${devcontainerId}` | `~/.config/gh`, `~/.config/glab-cli` |

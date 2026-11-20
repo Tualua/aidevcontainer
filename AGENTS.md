@@ -10,7 +10,7 @@
 
 | Путь | Что |
 |---|---|
-| `image/Dockerfile` | Базовый образ. Контекст сборки — **корень репозитория** (`-f image/Dockerfile .`), см. `.dockerignore` |
+| `image/Dockerfile` | Базовый образ. Контекст сборки — **корень репозитория** (`-f image/Dockerfile .`), см. `.dockerignore`. Два варианта: 26.04 (`latest`) и 22.04 (`jammy`, `--build-arg UBUNTU_VERSION=22.04`) |
 | `image/rootfs/` | Файлы, копируемые в образ (поздним слоем): `/etc/aidev/{zshrc,bashrc,starship.toml}`, `/etc/tmux.conf`, `/usr/local/bin/aidev-*`, `/etc/claude-code/managed-settings.d/50-aidev.json` |
 | `features/src/<id>/` | Features: `devcontainer-feature.json` + `install.sh` |
 | `features/lib/common.sh` | Общие функции features. **Копируется** в каждую feature (`make features-sync`), копии в `.gitignore` |
@@ -44,7 +44,10 @@
    команды без доступа к реальной инфраструктуре. Невалидный JSON не даёт Claude Code запуститься (сборка проверяет через `jq`).
 9. **Хуки не имеют TTY.** Вывод в терминал идёт только через `{"terminalSequence": ...}`
    (допустимы OSC 0/1/2/9/99/777 и BEL, иначе поле игнорируется), stdout хука должен содержать только JSON.
-10. Изменения в ранних слоях Dockerfile (apt, пользователь) пересобирают всё после них, это долго.
+10. **Dockerfile собирается на 26.04 и на 22.04.** Новый пакет apt проверьте в обоих (`make image-jammy`);
+   чего нет в 22.04 или там слишком старое — ставьте из релиза (как fzf/just/delta/zoxide).
+   Features только для jammy перечислены в `FEATURES_JAMMY` (Makefile) и проверяют версию ОС сами.
+11. Изменения в ранних слоях Dockerfile (apt, пользователь) пересобирают всё после них, это долго.
    Новое по возможности добавляйте в поздние слои.
 
 ## Проверка изменений
@@ -60,7 +63,11 @@ docker build -f image/Dockerfile -t aidev:dev .
 docker run --rm -t aidev:dev zsh -ic 'claude --version && go version && uv --version'   # без ошибок zsh
 
 # features (нужен make features-sync или ручное копирование common.sh/aidev-device-groups)
-make features-sync && (cd features && npx -y @devcontainers/cli features test --skip-scenarios -i aidev:dev .)
+make features-sync && (cd features && npx -y @devcontainers/cli features test --skip-scenarios --project-folder . -i aidev:dev \
+  -f terraform -f govc -f kubernetes -f intel-gpu -f usb-debug)
+# вариант jammy и его features
+docker build --build-arg UBUNTU_VERSION=22.04 -f image/Dockerfile -t aidev:jammy-dev .
+(cd features && npx -y @devcontainers/cli features test --skip-scenarios --project-folder . -i aidev:jammy-dev -f tina-sdk)
 
 # сквозной тест: шаблон проекта с image: aidev:dev
 devcontainer up --workspace-folder <tmp-проект> --remove-existing-container   # старт, postCreate без WARN

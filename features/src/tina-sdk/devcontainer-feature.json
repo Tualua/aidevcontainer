@@ -1,0 +1,12 @@
+{
+    "id": "tina-sdk",
+    "version": "1.0.0",
+    "name": "Allwinner Tina Linux SDK host",
+    "description": "Зависимости хоста для сборки Tina Linux (OpenWrt-based SDK Allwinner): python2 как `python`, busybox, i386-библиотеки для утилит pack, autotools/flex/bison и т.п.; adb, xfel (FEL-режим). Только Ubuntu ≤ 22.04: образ ghcr.io/tualua/aidev:jammy.",
+    "options": {
+        "adb":  { "type": "boolean", "default": true, "description": "adb (adbd в прошивке Tina: push/shell на плату)" },
+        "xfel": { "type": "boolean", "default": true, "description": "xfel — FEL-режим Allwinner (D1/F133/T113 и др.), сборка из исходников" },
+        "xfelVersion": { "type": "string", "default": "latest", "description": "Тег xfel (v1.4.0) или latest" }
+    },
+    "installsAfter": ["ghcr.io/tualua/aidevcontainer/usb-debug"]
+}

@@ -1,0 +1,7 @@
+# Добавить в .gitignore корня SDK. prebuilt/ и dl/ — из архивов по sdk.lock (aidev-sdk-fetch).
+/prebuilt/
+/dl/
+/out/
+/.config.old
+/tmp/
+*.tar.zst

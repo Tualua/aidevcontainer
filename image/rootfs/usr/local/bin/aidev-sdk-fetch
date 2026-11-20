@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Большие неизменяемые части вендорского SDK (тулчейны, кэш исходников), которых нет в git:
+# архивы описаны в sdk.lock проекта, распаковываются в рабочую копию с проверкой sha256.
+#
+#   aidev-sdk-fetch [LOCK]         распаковать всё из LOCK (по умолчанию ./sdk.lock)
+#   aidev-sdk-fetch pack [-p PREFIX] DIR...
+#                                  упаковать DIR → ./PREFIX-<имя DIR>.tar.zst (в текущий каталог)
+#                                  и напечатать строки для sdk.lock;
+#                                  PREFIX (например tina-t113-2023.12) различает архивы разных SDK
+#   aidev-sdk-fetch -h             справка
+#
+# Формат sdk.lock (пустые строки и # — комментарии):
+#   <каталог>  <sha256>  <URL архива>
+#   prebuilt   0f6a…     https://gitlab.example.com/api/v4/projects/12/packages/generic/tina-sdk/2023.12/tina-t113-2023.12-prebuilt.tar.zst
+#
+# Где ищется архив, по порядку:
+#   1. $AIDEV_SDK_ARCHIVES/<имя файла из URL>  (по умолчанию /opt/sdk-archives — каталог хоста, только чтение)
+#   2. загрузка по URL; для GitLab токен в AIDEV_SDK_TOKEN (заголовок PRIVATE-TOKEN)
+# Распакованный каталог помечается файлом .aidev-sdk-sha256: повторный запуск ничего не делает.
+# Непустой каталог без метки (или с другой) не трогается — разберитесь вручную и удалите его.
+set -euo pipefail
+
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+log() { echo "aidev-sdk-fetch: $*" >&2; }
+stamp=.aidev-sdk-sha256
+
+pack() {
+    local prefix="" d n f
+    if [ "${1:-}" = -p ]; then prefix="${2:?нужен PREFIX}-"; shift 2; fi
+    [ $# -gt 0 ] || { usage; exit 2; }
+    for d in "$@"; do
+        d="${d%/}"; n="$(basename "$d")"; f="${prefix}${n}.tar.zst"
+        [ -d "$d" ] || { log "$d: не каталог"; exit 1; }
+        [ -e "$f" ] && { log "$f уже существует"; exit 1; }
+        log "упаковка $d → $PWD/$f"
+        tar -C "$d" --exclude="./$stamp" -cf - . | zstd -T0 -10 -q -o "$f"
+        printf '%-12s %s  %s\n' "$n" "$(sha256sum "$f" | cut -d' ' -f1)" "<URL>/$f"
+    done
+}
+
+# Вызывается как `fetch_one … || rc=1`, а в таком контексте set -e не действует —
+# поэтому каждый шаг проверяется явно.
+fetch_one() { # fetch_one DIR SHA URL
+    local dir="$1" sha="$2" url="$3" name src tmp=""
+    name="$(basename "$url")"
+    if [ -f "$dir/$stamp" ] && [ "$(cat "$dir/$stamp")" = "$sha" ]; then
+        log "$dir: актуален"; return 0
+    fi
+    if [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
+        log "$dir: каталог не пуст и не из этого архива — пропускаю (удалите его, чтобы распаковать $name)"
+        return 1
+    fi
+    src="${AIDEV_SDK_ARCHIVES:-/opt/sdk-archives}/$name"
+    if [ -f "$src" ]; then
+        log "$dir: архив $src"
+    else
+        tmp="$(mktemp -d)"; src="$tmp/$name"
+        log "$dir: загрузка $url"
+        local auth=()
+        [ -n "${AIDEV_SDK_TOKEN:-}" ] && auth=(-H "PRIVATE-TOKEN: $AIDEV_SDK_TOKEN")
+        if ! curl -fL --retry 5 --retry-all-errors --connect-timeout 20 "${auth[@]}" -o "$src" "$url"; then
+            log "$dir: загрузка не удалась"; rm -rf "$tmp"; return 1
+        fi
+    fi
+    log "$dir: проверка sha256"
+    if ! echo "$sha  $src" | sha256sum -c --quiet - 2>/dev/null; then
+        log "$dir: sha256 не совпадает ($src)"; [ -n "$tmp" ] && rm -rf "$tmp"; return 1
+    fi
+    log "$dir: распаковка"
+    # tar сам определяет сжатие (zst, xz, gz)
+    if ! { mkdir -p "$dir" && tar -C "$dir" -xf "$src"; }; then
+        log "$dir: ошибка распаковки"; [ -n "$tmp" ] && rm -rf "$tmp"; return 1
+    fi
+    echo "$sha" > "$dir/$stamp"
+    [ -n "$tmp" ] && rm -rf "$tmp"
+    log "$dir: готово"
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    pack) shift; pack "$@"; exit 0 ;;
+esac
+
+lock="${1:-sdk.lock}"
+[ -f "$lock" ] || { log "$lock не найден — нечего делать"; exit 0; }
+cd "$(dirname "$lock")"
+rc=0
+while read -r dir sha url _; do
+    case "$dir" in ''|'#'*) continue ;; esac
+    [ -n "$url" ] || { log "строка '$dir' без sha256/URL"; rc=1; continue; }
+    fetch_one "$dir" "$sha" "$url" || rc=1
+done < "$(basename "$lock")"
+exit "$rc"

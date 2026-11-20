@@ -16,7 +16,7 @@
 
 | Слой | Ссылка | Что даёт |
 |---|---|---|
-| Базовый образ | `ghcr.io/tualua/aidev:latest` | Языки, AI-агенты, shell, тома, настройки VS Code |
+| Базовый образ | `ghcr.io/tualua/aidev:latest` (Ubuntu 26.04); `:jammy` (22.04) — только для вендорских SDK, §4b | Языки, AI-агенты, shell, тома, настройки VS Code |
 | Features | `ghcr.io/tualua/aidevcontainer/<id>:1` | Опциональные наборы инструментов |
 | Проект | `.devcontainer/devcontainer.json` | Features, устройства, зависимости проекта, env |
 
@@ -26,7 +26,7 @@
 
 ## 2. Что уже есть в базе: НЕ дублировать
 
-Ubuntu 26.04. Пользователь `dev` (uid 1000, passwordless sudo), shell zsh + oh-my-zsh + starship.
+Ubuntu 26.04 (вариант `:jammy` — Ubuntu 22.04 с тем же набором, см. §4b). Пользователь `dev` (uid 1000, passwordless sudo), shell zsh + oh-my-zsh + starship.
 
 | Область | Инструменты |
 |---|---|
@@ -39,7 +39,7 @@ Ubuntu 26.04. Пользователь `dev` (uid 1000, passwordless sudo), shel
 | Git | git, git-lfs, delta, `gh`, `glab` |
 | Утилиты | tmux, jq, yq (mikefarah), ripgrep, fd, fzf, bat, direnv, just, make, build-essential, сетевые утилиты |
 | Для агента | ast-grep, gotestsum, scc; LSP-плагины Claude Code `gopls-lsp`, `pyright-lsp`, `typescript-lsp` |
-| Для оператора | lazygit, glow, zoxide, `aidev-tmux`, `aidev-notify` |
+| Для оператора | lazygit, glow, zoxide, `aidev-tmux`, `aidev-notify`, `aidev-sdk-fetch` (§4b) |
 
 Уже настроено в метаданных образа (label `devcontainer.metadata`), в проекте **не повторять**:
 `remoteUser`, `containerUser`, `init`, `updateRemoteUserUID`, тома (ниже), терминал zsh,
@@ -94,6 +94,7 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 | OpenCL / Level Zero / VA-API / oneAPI, `/dev/dri` в документации | Intel GPU | feature `intel-gpu` + проброс устройства (§4) |
 | `platformio.ini`, `*.cfg` для openocd, `.cargo/config.toml` с `probe-rs`, `Embed.toml`, ESP-IDF | USB-отладка | feature `usb-debug` + проброс (§4) |
 | драйвер БД в зависимостях (`go.mongodb.org/mongo-driver`, `pgx`, `go-redis`, `pymongo`, `psycopg`…), `docker-compose.yml` для разработки, testcontainers в тестах | сервисы рядом | шаблон `compose-db`, §4a |
+| `build/envsetup.sh` + `lunch`, `lichee/`, `device/config/chips/`, `prebuilt/gcc/` (Allwinner Tina Linux); другой вендорский SDK, требующий python2 / старую систему сборки | вендорский SDK | образ `:jammy`, feature `tina-sdk`, шаблон `tina`, §4b |
 | `.envrc` | direnv | ничего: хук уже подключён, оператор делает `direnv allow` |
 | `.tool-versions`, `mise.toml` | менеджер версий | mise/asdf **нет** в базе. Используйте механизмы базы (Go toolchain, uv python); если не хватает, спросите оператора |
 
@@ -109,13 +110,15 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 | `kubernetes` | `kubectl` (`latest`), `helm` (`latest`, `none` — не ставить), `k9s` (`true`), `kubectx` (`true`), `stern` (`false`) |
 | `intel-gpu` | `compute` (`true`), `media` (`true`), `devel` (`false`), `tools` (`true`) |
 | `usb-debug` | `probeRs` (`false`), `pyocd` (`false`), `esptool` (`false`) |
+| `tina-sdk` | `adb` (`true`), `xfel` (`true`), `xfelVersion` (`latest`). **Только образ `:jammy`** |
 
 Версии закрепляйте только если проект этого требует (lock-файл, CI, `.terraform-version`).
 
 ### 3.3. Начать с шаблона
 
-Шаблоны: `templates/{base,gpu,usb,infra,compose-db}/.devcontainer/` в репозитории
-aidevcontainer (`compose-db`: контейнер разработки + Percona MongoDB через Docker Compose, §4a). Возьмите ближайший, удалите лишнее, комментарии оставьте только полезные проекту.
+Шаблоны: `templates/{base,gpu,usb,infra,compose-db,tina}/.devcontainer/` в репозитории
+aidevcontainer (`compose-db`: контейнер разработки + Percona MongoDB через Docker Compose, §4a;
+`tina`: прошивка на SDK Allwinner Tina Linux, §4b). Возьмите ближайший, удалите лишнее, комментарии оставьте только полезные проекту.
 
 ### 3.4. Зависимости проекта
 
@@ -242,6 +245,56 @@ Serial-порт, появившийся после старта: `sudo aidev-ser
 намеренно: доступ к сокету Docker хоста равен root на хосте. Если проект построен на testcontainers,
 сообщите оператору и предложите compose-сервис для разработки. Включать доступ к Docker можно только по
 его явному решению.
+
+## 4b. Вендорские SDK (Allwinner Tina Linux и подобные)
+
+SDK производителя платы: огромное дерево (Tina: ~14 GB, ~150 тыс. файлов) со своей системой сборки,
+рассчитанной на старый Linux. Проверено на Tina Linux V2 (T113, ядро 5.4): **на Ubuntu 26.04 не
+собирается** (нет python2, слишком новый gcc для старых host-утилит), на 22.04 собирается штатным gcc 11.
+
+**Окружение:**
+```jsonc
+"image": "ghcr.io/tualua/aidev:jammy",
+"features": {
+    "ghcr.io/tualua/aidevcontainer/tina-sdk:1": {},
+    "ghcr.io/tualua/aidevcontainer/usb-debug:1": {}
+}
+```
+Начинайте с шаблона `templates/tina`: devcontainer.json, `sdk.lock`, `AGENTS.md` для агентов проекта,
+фрагмент `.gitignore`.
+
+Feature `tina-sdk` даёт то, что реально потребовала сборка: `python` → **Python 2** (prereq SDK; `python3`
+и uv не затронуты, предупредите об этом в AGENTS.md проекта), `/bin/busybox` (без него `pack` ломается с
+невнятным `update_mbr failed` и всё равно возвращает 0), i386-библиотеки для 32-битных утилит упаковки,
+autotools/flex/bison/ncurses/ssl, `mkimage`, `dtc`, ccache; плюс `adb` и `xfel` для платы.
+
+**Git — схема vendor branch:**
+- ветка `vendor`: только поставки производителя, тег на каждую (`vendor/2023-12`); ветка `main`: работа;
+- новая поставка — коммит в `vendor`, затем `git merge vendor` в `main`;
+- в git **не входят** `prebuilt/` (тулчейны, гигабайты двоичных файлов) и `dl/` (архивы исходников пакетов);
+  файлы > 10 MB внутри дерева — в Git LFS (`.gitattributes`). GitHub не примет файлы > 100 MB без LFS.
+
+**`prebuilt/`, `dl/` — архивы по `sdk.lock`** (`aidev-sdk-fetch`, есть в базовом образе):
+```
+# <каталог>  <sha256>  <URL>
+prebuilt     0f6a…     https://gitlab.example.com/api/v4/projects/12/packages/generic/tina-sdk/2023.12/tina-t113-2023.12-prebuilt.tar.zst
+```
+- Создать архивы и строки (один раз, в корне SDK): `aidev-sdk-fetch pack -p tina-t113-2023.12 prebuilt dl`.
+  Префикс различает архивы разных SDK в общем `~/sdk-archives`.
+- При создании контейнера (`postCreateCommand` шаблона) архив ищется в `~/sdk-archives` хоста
+  (монтируется в `/opt/sdk-archives` только для чтения) по имени файла из URL, затем загружается по URL
+  (токен GitLab: `AIDEV_SDK_TOKEN`). sha256 проверяется всегда; распакованный каталог помечается и при
+  повторном запуске не трогается; непустой чужой каталог не перезаписывается.
+- Медленная связь с GitLab: архивы и первичный репозиторий (`.git` с LFS-объектами или `git bundle`)
+  переносятся в ту сеть один раз своим каналом; дальше по сети ходят только новые коммиты.
+
+**Плата:** serial-консоль из `usb-debug`; `adb` (если в прошивке есть adbd) — агент может сам выполнять цикл
+«собрать пакет → `adb push` → запустить → прочитать вывод». FEL-режим: `xfel`. На **хосте** нужно
+udev-правило из контейнера `/usr/share/aidev/udev/60-allwinner.rules` (в отчёт оператору).
+Запись во flash агенту — только с подтверждения оператора: укажите это в AGENTS.md проекта.
+
+**Ресурсы:** полная сборка Tina (T113) — ~25 мин при `-j4` и 8 GB RAM, `out/` ~2.2 GB. Для агента
+важны точечные цели: `make package/<x>/compile V=s`.
 
 ## 5. Инварианты: нарушать нельзя
 

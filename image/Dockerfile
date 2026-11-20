@@ -34,15 +34,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git git-lfs openssh-client gnupg2 \
         zsh zsh-autosuggestions zsh-syntax-highlighting \
         bash-completion less vim-tiny nano man-db file \
-        tmux jq ripgrep fd-find fzf bat tree htop procps psmisc lsof strace \
+        tmux jq ripgrep fd-find bat tree htop procps psmisc lsof strace \
         unzip zip xz-utils zstd rsync patch \
         make build-essential pkg-config \
-        shellcheck shfmt bats just direnv git-delta \
+        shellcheck shfmt bats direnv \
         python3 python3-venv python3-dev sshpass \
         iproute2 iputils-ping dnsutils netcat-openbsd \
     && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat \
     && rm -rf /var/lib/apt/lists/*
+
+# Все curl при сборке (включая install.sh, скачанные через `| sh`) — с повторами и таймаутами:
+# обрыв загрузки (curl 56, HTTP/2 PROTOCOL_ERROR) не роняет сборку, «застрявшая» загрузка обрывается.
+RUN printf '%s\n' '--retry 5' '--retry-all-errors' '--retry-delay 3' '--connect-timeout 20' \
+        '--speed-limit 1024' '--speed-time 60' > /root/.curlrc
 
 # GitHub CLI — из официального репозитория (в Ubuntu сильно устаревший)
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -67,7 +72,10 @@ RUN arch="$(dpkg --print-architecture)" \
 # SSH known_hosts для gitlab.com. github.com здесь намеренно нет: к GitHub всё идёт по HTTPS
 # (см. git config ниже), а наличие github.com в known_hosts заставляет Claude Code клонировать
 # плагины по SSH, что без ключа падает.
-RUN ssh-keyscan -t ed25519,rsa,ecdsa gitlab.com 2>/dev/null > /etc/ssh/ssh_known_hosts \
+RUN for i in 1 2 3 4 5; do \
+        ssh-keyscan -T 15 -t ed25519,rsa,ecdsa gitlab.com 2>/dev/null > /etc/ssh/ssh_known_hosts || true; \
+        grep -q '^gitlab.com ' /etc/ssh/ssh_known_hosts && break; sleep 3; \
+    done \
     && grep -q '^gitlab.com ' /etc/ssh/ssh_known_hosts
 
 # yq (mikefarah, Go-версия; в Ubuntu пакет yq — это другой, python-обёртка над jq)
@@ -189,15 +197,32 @@ RUN case "$(dpkg --print-architecture)" in amd64) t=x64;; arm64) t=arm64;; esac 
     && tar -C /usr/local/bin -xzf /tmp/opencode.tgz opencode && rm /tmp/opencode.tgz \
     && opencode --version
 
-# zoxide — бинарник из релиза (apt-get update в позднем слое стоит минуты из-за зеркала).
-# Своих sha256 у проекта нет — берём digest файла из GitHub API.
-RUN case "$(dpkg --print-architecture)" in amd64) t=x86_64;; arm64) t=aarch64;; esac \
-    && rel="$(curl -fsSL https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest)" \
-    && url="$(jq -r --arg t "$t" '.assets[] | select(.name | endswith("-" + $t + "-unknown-linux-musl.tar.gz")) | .browser_download_url' <<<"$rel")" \
-    && sha="$(jq -r --arg u "$url" '.assets[] | select(.browser_download_url == $u) | .digest | sub("^sha256:"; "")' <<<"$rel")" \
-    && curl -fsSL "$url" -o /tmp/zoxide.tgz \
-    && echo "$sha  /tmp/zoxide.tgz" | sha256sum -c - \
-    && tar -C /usr/local/bin -xzf /tmp/zoxide.tgz zoxide && rm /tmp/zoxide.tgz
+# CLI из GitHub-релизов: в 22.04 (вариант jammy) их нет в apt или они слишком старые (fzf без --bash),
+# а так версии одинаковы во всех вариантах образа. sha256 — digest файла из GitHub API.
+# Версия — тег релиза как на GitHub (v0.75.0, 1.59.0) или latest.
+ARG FZF_VERSION=latest
+ARG JUST_VERSION=latest
+ARG DELTA_VERSION=latest
+ARG ZOXIDE_VERSION=latest
+# gh_release owner/repo TAG NAME-REGEX → /tmp/release.tgz (с проверкой sha256)
+RUN case "$(dpkg --print-architecture)" in amd64) t=x86_64; g=amd64;; arm64) t=aarch64; g=arm64;; esac \
+    && gh_release() { \
+        if [ "$2" = latest ]; then u="https://api.github.com/repos/$1/releases/latest"; \
+        else u="https://api.github.com/repos/$1/releases/tags/$2"; fi; \
+        a="$(curl -fsSL "$u" | jq -ce --arg re "$3" '[.assets[] | select(.name | test($re))][0]')"; \
+        curl -fsSL "$(jq -r .browser_download_url <<<"$a")" -o /tmp/release.tgz; \
+        echo "$(jq -r '.digest | sub("^sha256:"; "")' <<<"$a")  /tmp/release.tgz" | sha256sum -c -; \
+    } \
+    && gh_release junegunn/fzf        "$FZF_VERSION"    "-linux_${g}\\.tar\\.gz$" \
+    && tar -C /usr/local/bin -xzf /tmp/release.tgz fzf \
+    && gh_release casey/just          "$JUST_VERSION"   "-${t}-unknown-linux-musl\\.tar\\.gz$" \
+    && tar -C /usr/local/bin -xzf /tmp/release.tgz just \
+    && gh_release dandavison/delta    "$DELTA_VERSION"  "-${t}-unknown-linux-musl\\.tar\\.gz$" \
+    && tar -C /usr/local/bin --strip-components=1 --wildcards -xzf /tmp/release.tgz '*/delta' \
+    && gh_release ajeetdsouza/zoxide  "$ZOXIDE_VERSION" "-${t}-unknown-linux-musl\\.tar\\.gz$" \
+    && tar -C /usr/local/bin -xzf /tmp/release.tgz zoxide \
+    && rm /tmp/release.tgz \
+    && fzf --version && just --version && delta --version && zoxide --version
 
 # Конфиги и скрипты aidev — поздним слоем: их правка не пересобирает тяжёлые слои выше
 COPY image/rootfs/ /

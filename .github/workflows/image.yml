@@ -14,6 +14,19 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # основной: latest, YYYYMMDD, sha-xxxx
+          - ubuntu: "26.04"
+            prefix: ""
+            latest: latest
+          # для вендорских SDK, которым нужна старая система сборки (python2 и т.п.):
+          # jammy, jammy-YYYYMMDD, jammy-sha-xxxx
+          - ubuntu: "22.04"
+            prefix: "jammy-"
+            latest: jammy
     steps:
       - uses: actions/checkout@v4
       - id: name
@@ -29,18 +42,19 @@ jobs:
         with:
           images: ${{ steps.name.outputs.image }}
           tags: |
-            type=raw,value=latest
-            type=raw,value={{date 'YYYYMMDD'}}
-            type=sha,format=short
+            type=raw,value=${{ matrix.latest }}
+            type=raw,value=${{ matrix.prefix }}{{date 'YYYYMMDD'}}
+            type=sha,format=short,prefix=${{ matrix.prefix }}sha-
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: image/Dockerfile
           platforms: linux/amd64
+          build-args: UBUNTU_VERSION=${{ matrix.ubuntu }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # По расписанию/вручную — без кэша, иначе "latest" (AI CLI, Go, Node) не обновятся
           no-cache: ${{ github.event_name != 'push' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ubuntu-${{ matrix.ubuntu }}
+          cache-to: type=gha,mode=max,scope=ubuntu-${{ matrix.ubuntu }}

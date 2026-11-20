@@ -15,6 +15,10 @@
 
 Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля).
 
+Вариант **`:jammy`** — тот же образ на Ubuntu 22.04 для вендорских SDK, которым нужна старая система сборки
+(python2 и т.п.; проверено на Allwinner Tina Linux). Набор инструментов и метаданные те же; fzf, just, delta и
+zoxide в обоих вариантах ставятся из релизов, а не из apt, поэтому версии совпадают.
+
 - **AI-агенты:** Claude Code (нативный установщик, канал `latest`), OpenCode 2 (бинарник из релиза, самообновление выключено, обновляется с образом), qwen-code
 - **Go:** последняя версия, `GOTOOLCHAIN=auto`, gopls, dlv, goimports, gofumpt, golangci-lint
 - **Python:** uv/uvx (интерпретаторы ставятся через uv), ruff, pre-commit, pyright
@@ -35,7 +39,8 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
 - **Для агента:** ast-grep (структурный поиск и замена), gotestsum (компактный вывод тестов), scc (обзор кодовой базы),
   LSP-плагины Claude Code для Go, Python и TS (gopls, pyright, typescript-language-server уже в образе)
 - **Для оператора:** lazygit (ревью изменений агента), glow (markdown в терминале), zoxide (`z <часть пути>`),
-  `aidev-tmux` (сессия и параллельные агенты), `aidev-notify` (уведомления)
+  `aidev-tmux` (сессия и параллельные агенты), `aidev-notify` (уведомления),
+  `aidev-sdk-fetch` (крупные части вендорского SDK из архивов по `sdk.lock`, см. ниже)
 - **Утилиты:** tmux, jq, yq (mikefarah), ripgrep, fd, fzf, bat, direnv, just, сетевые утилиты
 
 Настройки devcontainer зашиты в label `devcontainer.metadata`. Поэтому проекту достаточно
@@ -107,14 +112,16 @@ Ubuntu 26.04, пользователь `dev` (uid 1000, sudo без пароля
 | `kubernetes` | kubectl, helm, k9s, kubectx/kubens, stern; проектный том `aidev-kube-<id>` → `~/.kube` | `kubectl`, `helm`, `k9s`, `kubectx`, `stern` |
 | `intel-gpu` | OpenCL, Level Zero, VA-API (iHD), clinfo, intel_gpu_top | `compute`, `media`, `devel`, `tools` |
 | `usb-debug` | openocd, gdb-multiarch, stlink, dfu-util, picocom/tio/minicom | `probeRs`, `pyocd`, `esptool` |
+| `tina-sdk` | Хост для Allwinner Tina Linux SDK: `python` = Python 2, busybox, i386-библиотеки, autotools и т.п.; adb, xfel. **Только `:jammy`** | `adb`, `xfel`, `xfelVersion` |
 
 Features рассчитаны на этот базовый образ (Ubuntu, пользователь `dev`).
 
 ## Использование в проекте
 
-Скопируйте подходящий шаблон из `templates/` в проект: `base`, `gpu`, `usb`, `infra` или `compose-db`
+Скопируйте подходящий шаблон из `templates/` в проект: `base`, `gpu`, `usb`, `infra`, `compose-db`
 (контейнер разработки плюс Percona MongoDB через Docker Compose; подробности в
-[руководстве, §4a](docs/agent-guide.md#4a-сервисы-рядом-бд-брокеры-кэши-docker-compose)):
+[руководстве, §4a](docs/agent-guide.md#4a-сервисы-рядом-бд-брокеры-кэши-docker-compose)) или `tina`
+(прошивка на вендорском SDK, см. ниже):
 
 ```jsonc
 {
@@ -138,6 +145,18 @@ npm i -g @devcontainers/cli
 devcontainer up --workspace-folder .
 devcontainer exec --workspace-folder . tmux new -A -s main
 ```
+
+## Вендорский SDK (Allwinner Tina Linux)
+
+Шаблон `templates/tina`: образ `:jammy`, features `tina-sdk` и `usb-debug`, `sdk.lock`, `AGENTS.md` для агентов
+проекта. Подробно — [руководство, §4b](docs/agent-guide.md#4b-вендорские-sdk-allwinner-tina-linux-и-подобные).
+
+- **Git:** поставка производителя — ветка `vendor` (тег на каждую поставку), работа — `main`; новая поставка
+  вливается `git merge vendor`. `prebuilt/` и `dl/` в git не входят, файлы > 10 MB — в LFS.
+- **`prebuilt/`, `dl/`** — архивы с sha256 в `sdk.lock`; при создании контейнера `aidev-sdk-fetch` берёт их из
+  `~/sdk-archives` хоста или загружает по URL (GitLab generic packages, токен `AIDEV_SDK_TOKEN`).
+  Создать архивы: `aidev-sdk-fetch pack -p <sdk-версия> prebuilt dl`.
+- **Хост:** udev-правило `/usr/share/aidev/udev/60-allwinner.rules` (FEL, adb) скопировать в `/etc/udev/rules.d/`.
 
 ## Работа с агентами
 
@@ -195,17 +214,20 @@ features запускают `aidev-device-groups`: он создаёт груп�
 ```bash
 make image                    # docker build -f image/Dockerfile . → ghcr.io/tualua/aidev:latest и aidev:dev
 make image-fresh              # без кэша: свежие Claude Code/opencode/qwen, Go, Node, uv-инструменты
+make image-jammy              # вариант на Ubuntu 22.04 → :jammy и aidev:jammy-dev
 make image ENGINE=podman
 make image BUILD_ARGS="--build-arg GO_VERSION=1.26.3 --build-arg CLAUDE_CODE_VERSION=latest"
 make features-test            # devcontainer CLI: features поверх aidev:dev
+make features-test-jammy      # features только для jammy (tina-sdk) поверх aidev:jammy-dev
 make lint
 make push features-publish REGISTRY=registry.example.com/team
 ```
 
 GitHub Actions (`.github/workflows/`):
 
-- **image.yml** собирает образ под amd64 при изменениях и **раз в неделю**.
-  Плановая и ручная сборки идут без кэша, чтобы обновлялись AI CLI, Go, Node и патчи. Теги: `latest`, `YYYYMMDD`, `sha-xxxx`.
+- **image.yml** собирает образ под amd64 при изменениях и **раз в неделю**, оба варианта.
+  Плановая и ручная сборки идут без кэша, чтобы обновлялись AI CLI, Go, Node и патчи. Теги: `latest`, `YYYYMMDD`,
+  `sha-xxxx`; для 22.04 — `jammy`, `jammy-YYYYMMDD`, `jammy-sha-xxxx`.
 - **features.yml** публикует features в `ghcr.io/<owner>/aidevcontainer/<id>`.
 
 Чтобы получить воспроизводимую сборку, закрепите тег образа `:YYYYMMDD` и мажорную версию feature `:1`.

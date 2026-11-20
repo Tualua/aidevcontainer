@@ -1,0 +1,7 @@
+# Крупные неизменяемые части SDK вне git: <каталог> <sha256> <URL архива>.
+# Архив ищется сначала в ~/sdk-archives хоста (по имени файла из URL), затем загружается по URL.
+# Создать архивы и строки для этого файла (в корне SDK, один раз):
+#   aidev-sdk-fetch pack -p <prefix, например tina-t113-2023.12> prebuilt dl
+#
+# prebuilt  <sha256>  https://gitlab.example.com/api/v4/projects/<id>/packages/generic/<sdk>/<версия>/<prefix>-prebuilt.tar.zst
+# dl        <sha256>  https://gitlab.example.com/api/v4/projects/<id>/packages/generic/<sdk>/<версия>/<prefix>-dl.tar.zst

@@ -1,0 +1,32 @@
+// Прошивка на вендорском SDK Allwinner Tina Linux (OpenWrt-based): сборка, упаковка, работа с платой.
+//
+// Рабочая копия = git-репозиторий SDK (ветка vendor — поставка производителя, main — ваша работа).
+// Крупные неизменяемые части (prebuilt/, dl/) в git не входят: их распаковывает aidev-sdk-fetch
+// по sdk.lock — из каталога архивов хоста ~/sdk-archives (без загрузки) или по URL.
+//
+// Образ :jammy (Ubuntu 22.04): SDK требует python2 и старую систему сборки, на 26.04 не собирается.
+// В контейнере `python` — это Python 2 (требование SDK); для своих скриптов — python3 / uv.
+{
+    "name": "${localWorkspaceFolderBasename}",
+    "image": "ghcr.io/tualua/aidev:jammy",
+    "features": {
+        "ghcr.io/tualua/aidevcontainer/tina-sdk:1": {},
+        "ghcr.io/tualua/aidevcontainer/usb-debug:1": {}
+    },
+    // Каталог архивов SDK на хосте — создаётся, если его нет (bind-mount несуществующего пути падает)
+    "initializeCommand": "mkdir -p \"${localEnv:HOME}/sdk-archives\"",
+    "mounts": [
+        "type=bind,source=${localEnv:HOME}/sdk-archives,target=/opt/sdk-archives,readonly",
+        // Плата: FEL-режим (xfel), adb, serial-консоль. На ХОСТЕ нужно udev-правило:
+        // /usr/share/aidev/udev/60-allwinner.rules из контейнера → /etc/udev/rules.d/
+        "type=bind,source=/dev/bus/usb,target=/dev/bus/usb"
+    ],
+    "runArgs": [
+        "--device-cgroup-rule=c 189:* rmw",   // USB (libusb: xfel, adb)
+        "--device-cgroup-rule=c 166:* rmw",   // ttyACM*
+        "--device-cgroup-rule=c 188:* rmw"    // ttyUSB* (serial-консоль)
+    ],
+    // Загрузка по URL из sdk.lock (GitLab generic packages): токен с правом read_api
+    // "containerEnv": { "AIDEV_SDK_TOKEN": "${localEnv:AIDEV_SDK_TOKEN}" },
+    "postCreateCommand": "aidev-sdk-fetch"
+}

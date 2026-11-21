@@ -45,7 +45,7 @@ jobs:
             type=raw,value=${{ matrix.latest }}
             type=raw,value=${{ matrix.prefix }}{{date 'YYYYMMDD'}}
             type=sha,format=short,prefix=${{ matrix.prefix }}sha-
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: image/Dockerfile

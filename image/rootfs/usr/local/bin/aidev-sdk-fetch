@@ -85,7 +85,8 @@ lock="${1:-sdk.lock}"
 [ -f "$lock" ] || { log "$lock не найден — нечего делать"; exit 0; }
 cd "$(dirname "$lock")"
 rc=0
-while read -r dir sha url _; do
+# `|| [ -n "$dir" ]` — последняя строка без перевода строки (так сохраняет веб-редактор GitLab)
+while read -r dir sha url _ || [ -n "$dir" ]; do
     case "$dir" in ''|'#'*) continue ;; esac
     [ -n "$url" ] || { log "строка '$dir' без sha256/URL"; rc=1; continue; }
     fetch_one "$dir" "$sha" "$url" || rc=1

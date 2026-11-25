@@ -22,6 +22,7 @@ zoxide в обоих вариантах ставятся из релизов, а
 - **AI-агенты:** Claude Code (нативный установщик, канал `latest`), OpenCode 2 (бинарник из релиза, самообновление выключено, обновляется с образом), qwen-code
 - **Go:** последняя версия, `GOTOOLCHAIN=auto`, gopls, dlv, goimports, gofumpt, golangci-lint
 - **Python:** uv/uvx (интерпретаторы ставятся через uv), ruff, pre-commit, pyright
+- **YAML:** yamllint (через `uv tool`), yq
 - **Ansible:** ansible-core и ansible-lint (через `uv tool`)
 - **Shell:** shellcheck, shfmt, bats
 - **JS/TS:** Node LTS, typescript, typescript-language-server
@@ -113,6 +114,7 @@ zoxide в обоих вариантах ставятся из релизов, а
 | `intel-gpu` | OpenCL, Level Zero, VA-API (iHD), clinfo, intel_gpu_top | `compute`, `media`, `devel`, `tools` |
 | `usb-debug` | openocd, gdb-multiarch, stlink, dfu-util, picocom/tio/minicom | `probeRs`, `pyocd`, `esptool` |
 | `tina-sdk` | Хост для Allwinner Tina Linux SDK: `python` = Python 2, busybox, i386-библиотеки, autotools и т.п.; adb, xfel. **Только `:jammy`** | `adb`, `xfel`, `xfelVersion` |
+| `ingenic-sdk` | Хост для Ingenic Linux SDK (X2600/X2670): `python` = Python 3, flex/bison, libssl-dev, mkimage, cpio/bc; adb; udev-правило для USB-boot. **Только `:jammy`**, несовместима с `tina-sdk` | `adb` |
 
 Features рассчитаны на этот базовый образ (Ubuntu, пользователь `dev`).
 
@@ -157,6 +159,9 @@ devcontainer exec --workspace-folder . tmux new -A -s main
   `~/sdk-archives` хоста или загружает по URL (GitLab generic packages, токен `AIDEV_SDK_TOKEN`).
   Создать архивы: `aidev-sdk-fetch pack -p <sdk-версия> prebuilt dl`.
 - **Хост:** udev-правило `/usr/share/aidev/udev/60-allwinner.rules` (FEL, adb) скопировать в `/etc/udev/rules.d/`.
+
+**Ingenic Linux SDK** (X2600/X2670): образ `:jammy`, feature `ingenic-sdk` (+ `usb-debug` для консоли).
+Та же схема git/`sdk.lock`: вне git — `buildroot/dl/` и `prebuilts/`. См. [§4b](docs/agent-guide.md#4b-вендорские-sdk-allwinner-tina-linux-и-подобные).
 
 ## Работа с агентами
 
@@ -218,7 +223,7 @@ make image-jammy              # вариант на Ubuntu 22.04 → :jammy и a
 make image ENGINE=podman
 make image BUILD_ARGS="--build-arg GO_VERSION=1.26.3 --build-arg CLAUDE_CODE_VERSION=latest"
 make features-test            # devcontainer CLI: features поверх aidev:dev
-make features-test-jammy      # features только для jammy (tina-sdk) поверх aidev:jammy-dev
+make features-test-jammy      # features только для jammy (tina-sdk, ingenic-sdk) поверх aidev:jammy-dev
 make lint
 make push features-publish REGISTRY=registry.example.com/team
 ```

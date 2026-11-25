@@ -175,6 +175,7 @@ RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_IN
     && uv tool install pre-commit \
     && uv tool install ansible-core \
     && uv tool install ansible-lint \
+    && uv tool install yamllint \
     && uv tool install ast-grep-cli \
     && rm -rf /tmp/uv-cache
 

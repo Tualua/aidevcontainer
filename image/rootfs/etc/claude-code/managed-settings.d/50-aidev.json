@@ -100,6 +100,8 @@
       "Bash(bats *)",
       "Bash(ansible-lint)",
       "Bash(ansible-lint *)",
+      "Bash(yamllint)",
+      "Bash(yamllint *)",
       "Bash(ansible-playbook --syntax-check)",
       "Bash(ansible-playbook --syntax-check *)",
       "Bash(terraform fmt -check)",

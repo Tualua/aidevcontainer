@@ -1,0 +1,10 @@
+{
+    "id": "ingenic-sdk",
+    "version": "1.0.0",
+    "name": "Ingenic Linux SDK host (X2600/X2670)",
+    "description": "Зависимости хоста для сборки Ingenic Linux SDK (envsetup.sh + lunch, buildroot 2023.08, ядро 5.10, u-boot): `python` = Python 3, flex/bison, libssl-dev, mkimage, cpio/bc, ncurses для menuconfig; adb. udev-правило для USB-boot Ingenic (cloner). Только Ubuntu 22.04: образ ghcr.io/tualua/aidev:jammy. Несовместима с tina-sdk (там `python` = Python 2).",
+    "options": {
+        "adb": { "type": "boolean", "default": true, "description": "adb (adbd в прошивке: push/shell на плату)" }
+    },
+    "installsAfter": ["ghcr.io/tualua/aidevcontainer/usb-debug"]
+}

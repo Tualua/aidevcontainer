@@ -67,7 +67,8 @@ make features-sync && (cd features && npx -y @devcontainers/cli features test --
   -f terraform -f govc -f kubernetes -f intel-gpu -f usb-debug)
 # вариант jammy и его features
 docker build --build-arg UBUNTU_VERSION=22.04 -f image/Dockerfile -t aidev:jammy-dev .
-(cd features && npx -y @devcontainers/cli features test --skip-scenarios --project-folder . -i aidev:jammy-dev -f tina-sdk)
+# по одной: tina-sdk и ingenic-sdk несовместимы (разный `python`), а CLI ставит все -f в один образ
+for f in tina-sdk ingenic-sdk; do (cd features && npx -y @devcontainers/cli features test --skip-scenarios --project-folder . -i aidev:jammy-dev -f $f); done
 
 # сквозной тест: шаблон проекта с image: aidev:dev
 devcontainer up --workspace-folder <tmp-проект> --remove-existing-container   # старт, postCreate без WARN

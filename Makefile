@@ -5,7 +5,7 @@ IMAGE     ?= $(REGISTRY)/aidev
 TAG       ?= latest
 FEATURES  := $(notdir $(wildcard features/src/*))
 # Features только для варианта jammy (Ubuntu 22.04): тестируются на aidev:jammy-dev
-FEATURES_JAMMY := tina-sdk
+FEATURES_JAMMY := tina-sdk ingenic-sdk
 BUILD_ARGS ?=
 
 .PHONY: image image-jammy image-fresh push features-sync features-test features-test-jammy features-publish lint clean
@@ -33,8 +33,11 @@ features-sync:
 features-test: features-sync image
 	cd features && devcontainer features test --skip-scenarios --project-folder . -i aidev:dev $(addprefix -f ,$(filter-out $(FEATURES_JAMMY),$(FEATURES)))
 
+# По одной: CLI ставит все -f в один образ, а tina-sdk и ingenic-sdk несовместимы (разный `python`)
 features-test-jammy: features-sync image-jammy
-	cd features && devcontainer features test --skip-scenarios --project-folder . -i aidev:jammy-dev $(addprefix -f ,$(FEATURES_JAMMY))
+	cd features && for f in $(FEATURES_JAMMY); do \
+	  devcontainer features test --skip-scenarios --project-folder . -i aidev:jammy-dev -f $$f || exit 1; \
+	done
 
 features-publish: features-sync
 	devcontainer features publish -r $(firstword $(subst /, ,$(REGISTRY))) \

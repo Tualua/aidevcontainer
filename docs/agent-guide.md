@@ -36,6 +36,7 @@ Ubuntu 26.04 (вариант `:jammy` — Ubuntu 22.04 с тем же набор
 | Ansible | `ansible-core`, `ansible-lint` (глобально, через uv tool) |
 | JS/TS | Node LTS, npm, typescript, typescript-language-server. **Нет** pnpm/yarn/corepack |
 | Shell | shellcheck, shfmt, bats |
+| YAML | `yamllint` (через uv tool), `yq` |
 | Git | git, git-lfs, delta, `gh`, `glab` |
 | Утилиты | tmux, jq, yq (mikefarah), ripgrep, fd, fzf, bat, direnv, just, make, build-essential, сетевые утилиты |
 | Для агента | ast-grep, gotestsum, scc; LSP-плагины Claude Code `gopls-lsp`, `pyright-lsp`, `typescript-lsp` |
@@ -95,6 +96,7 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 | `platformio.ini`, `*.cfg` для openocd, `.cargo/config.toml` с `probe-rs`, `Embed.toml`, ESP-IDF | USB-отладка | feature `usb-debug` + проброс (§4) |
 | драйвер БД в зависимостях (`go.mongodb.org/mongo-driver`, `pgx`, `go-redis`, `pymongo`, `psycopg`…), `docker-compose.yml` для разработки, testcontainers в тестах | сервисы рядом | шаблон `compose-db`, §4a |
 | `build/envsetup.sh` + `lunch`, `lichee/`, `device/config/chips/`, `prebuilt/gcc/` (Allwinner Tina Linux); другой вендорский SDK, требующий python2 / старую систему сборки | вендорский SDK | образ `:jammy`, feature `tina-sdk`, шаблон `tina`, §4b |
+| `build/envsetup.sh` + `lunch`, `buildroot/`, `kernel/kernel-5.10`, `prebuilts/toolchains/mips-gcc*` (Ingenic X2600/X2670) | вендорский SDK Ingenic | образ `:jammy`, feature `ingenic-sdk`, §4b |
 | `.envrc` | direnv | ничего: хук уже подключён, оператор делает `direnv allow` |
 | `.tool-versions`, `mise.toml` | менеджер версий | mise/asdf **нет** в базе. Используйте механизмы базы (Go toolchain, uv python); если не хватает, спросите оператора |
 
@@ -111,6 +113,7 @@ Git: GitHub **только по HTTPS** (`git@github.com:` переписыва�
 | `intel-gpu` | `compute` (`true`), `media` (`true`), `devel` (`false`), `tools` (`true`) |
 | `usb-debug` | `probeRs` (`false`), `pyocd` (`false`), `esptool` (`false`) |
 | `tina-sdk` | `adb` (`true`), `xfel` (`true`), `xfelVersion` (`latest`). **Только образ `:jammy`** |
+| `ingenic-sdk` | `adb` (по умолчанию `true`). **Только образ `:jammy`**; с `tina-sdk` не сочетается (разный `python`) |
 
 Версии закрепляйте только если проект этого требует (lock-файл, CI, `.terraform-version`).
 
@@ -295,6 +298,35 @@ udev-правило из контейнера `/usr/share/aidev/udev/60-allwinne
 
 **Ресурсы:** полная сборка Tina (T113) — ~25 мин при `-j4` и 8 GB RAM, `out/` ~2.2 GB. Для агента
 важны точечные цели: `make package/<x>/compile V=s`.
+
+### Ingenic Linux SDK (X2600/X2670)
+
+Поставка: архив дерева SDK (`ingenic-linux-kernel5.10-x2600-v<версия>.tar.bz2`, ~0.7 GB → ~3 GB) и
+отдельно `dl.tar.bz2` для buildroot (~3.5 GB), распаковывается в `buildroot/` (получается `buildroot/dl/`).
+Сборка: `source build/envsetup.sh && lunch <combo> && make -j"$(nproc)"`, результат —
+`out/product/<combo>/image/{uboot,kernel,system.ubifs}`.
+
+```jsonc
+"image": "ghcr.io/tualua/aidev:jammy",
+"features": {
+    "ghcr.io/tualua/aidevcontainer/ingenic-sdk:1": {},
+    "ghcr.io/tualua/aidevcontainer/usb-debug:1": {}
+}
+```
+
+Проверено полной сборкой SDK X2600 v5.0 (`x2600halley7.v10_nand_5.10-eng`, buildroot 2023.08, ядро 5.10):
+~55 мин при `-j8` с нуля. **На Ubuntu 26.04 не собирается:** GCC 15 не компилирует старый gnulib
+host-пакетов buildroot (первым падает `host-m4`). Вендорский список пакетов (Ubuntu 14.04, openjdk-7,
+libpng12) устарел, не используйте его. Что потребовала сборка сверх базы:
+- `python` → **Python 3** (`python-is-python3`). Без него `make` **завершается успешно, но без ядра и
+  u-boot**: `findleaves.py` не находит `Build.mk`. Python 2 нужен только для doxygen-документации SDK;
+- `cpio`, `bc` (buildroot), `flex`, `bison`, `libssl-dev`, `mkimage` (ядро 5.10, `uImage`).
+
+Плата не из `lunch` (например, x2670 Halley в v4.1 есть только как dts и `buildroot/configs/x2670_halley_*`):
+нужен свой `device/<плата>/` по образцу ближайшего (`x2670hare`), это работа проекта.
+Вне git (по `sdk.lock`, как у Tina): `buildroot/dl/`, `prebuilts/`. Прошивка платы — USB-boot
+(`USB_BOOT` + `RST`) вендорской утилитой cloner; на **хосте** нужно udev-правило
+`/usr/share/aidev/udev/60-ingenic.rules`. Запись во flash — только с подтверждения оператора.
 
 ## 5. Инварианты: нарушать нельзя
 
